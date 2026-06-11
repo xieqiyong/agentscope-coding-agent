@@ -1,10 +1,10 @@
-<template>
+﻿<template>
   <div class="workspace-layout">
     <TopBar />
 
     <div class="workspace-body">
       <LeftSidebar />
-      <ChatPanel />
+      <ChatPanel @review-confirmation="openDiffReview" />
       <RightPanel />
     </div>
 
@@ -34,42 +34,58 @@ const workspaceStore = useWorkspaceStore()
 const chatStore = useChatStore()
 
 const showDiffModal = ref(false)
+const selectedConfirmation = ref<Confirmation | null>(null)
 
 const activeConfirmation = computed<Confirmation | null>(
-  () => chatStore.pendingConfirmations[0] || null,
+  () => selectedConfirmation.value || null,
 )
 
-// Watch for pending confirmations to auto-open modal
-watch(
-  () => chatStore.pendingConfirmations.length,
-  (len) => {
-    if (len > 0) {
-      showDiffModal.value = true
-    }
-  },
-)
-
-// Load workspaces on mount, auto-select first if available
+// 启动时恢复上次工作区和会话，刷新页面后聊天记录不会丢。
 onMounted(async () => {
   await workspaceStore.fetchWorkspaces()
-  if (!workspaceStore.currentWorkspace && workspaceStore.workspaces.length > 0) {
-    await workspaceStore.selectWorkspace(workspaceStore.workspaces[0].id)
-    await chatStore.fetchSessions(workspaceStore.workspaces[0].id)
-  }
+  const restoredWorkspaceId = workspaceStore.restoreWorkspaceId()
+  const workspace = workspaceStore.workspaces.find((item) => String(item.id) === String(restoredWorkspaceId))
+    || workspaceStore.workspaces[0]
+
+  if (!workspace) return
+
+  await workspaceStore.selectWorkspace(workspace.id)
+  await chatStore.fetchSessions(workspace.id)
+  await restoreConversation()
 })
 
-// Watch workspace change → reload sessions
+// 工作区切换时重新加载会话。
 watch(
   () => workspaceStore.currentWorkspace?.id,
-  async (newId) => {
-    if (newId) {
-      await chatStore.fetchSessions(newId)
-    }
+  async (newId, oldId) => {
+    if (!newId || String(newId) === String(oldId || '')) return
+    await chatStore.fetchSessions(newId)
+    await restoreConversation()
   },
 )
+
+async function restoreConversation() {
+  if (chatStore.sessions.length === 0) {
+    chatStore.clearSession()
+    return
+  }
+
+  const restoredId = chatStore.restoreConversationId()
+  const session = chatStore.sessions.find((item) => String(item.id) === String(restoredId))
+    || chatStore.sessions[0]
+  if (session) {
+    await chatStore.selectSession(String(session.id))
+  }
+}
+
+function openDiffReview(confirmation: Confirmation) {
+  selectedConfirmation.value = confirmation
+  showDiffModal.value = true
+}
 
 function onDiffResolved() {
   showDiffModal.value = false
+  selectedConfirmation.value = null
 }
 </script>
 
@@ -79,6 +95,7 @@ function onDiffResolved() {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: var(--bg-main);
 }
 
 .workspace-body {

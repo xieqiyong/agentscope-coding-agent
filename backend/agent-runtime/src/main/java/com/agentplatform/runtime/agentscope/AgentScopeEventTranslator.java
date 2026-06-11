@@ -49,25 +49,25 @@ class AgentScopeEventTranslator {
             events.add(of(context, RuntimeEventType.THINKING_FINISHED, "思考结束", null, Map.of(), elapsedMs));
         } else if (event instanceof ToolCallStartEvent e) {
             events.add(of(context, RuntimeEventType.TOOL_CALL_STARTED, "开始准备工具调用", null,
-                    Map.of("toolCallId", safe(e.getToolCallId()), "tool", safe(e.getToolCallName())), elapsedMs));
+                    toolMetadata(e.getToolCallId(), e.getToolCallName()), elapsedMs));
         } else if (event instanceof ToolCallDeltaEvent e) {
             events.add(of(context, RuntimeEventType.TOOL_CALL_ARGS_DELTA, "工具参数增量", e.getDelta(),
-                    Map.of("toolCallId", safe(e.getToolCallId())), elapsedMs));
+                    toolMetadata(e.getToolCallId(), null), elapsedMs));
         } else if (event instanceof ToolCallEndEvent e) {
             events.add(of(context, RuntimeEventType.TOOL_CALL_FINISHED, "工具调用参数生成完成", null,
-                    Map.of("toolCallId", safe(e.getToolCallId())), elapsedMs));
+                    toolMetadata(e.getToolCallId(), null), elapsedMs));
         } else if (event instanceof ToolResultStartEvent e) {
             events.add(of(context, RuntimeEventType.TOOL_RESULT_STARTED, "开始返回工具结果", null,
-                    Map.of("toolCallId", safe(e.getToolCallId()), "tool", safe(e.getToolCallName())), elapsedMs));
+                    toolMetadata(e.getToolCallId(), e.getToolCallName()), elapsedMs));
         } else if (event instanceof ToolResultTextDeltaEvent e) {
             events.add(of(context, RuntimeEventType.TOOL_RESULT_DELTA, "工具结果文本增量", e.getDelta(),
-                    Map.of("toolCallId", safe(e.getToolCallId())), elapsedMs));
+                    toolMetadata(e.getToolCallId(), null), elapsedMs));
         } else if (event instanceof ToolResultDataDeltaEvent e) {
             events.add(of(context, RuntimeEventType.TOOL_RESULT_DATA_DELTA, "工具结果数据增量", String.valueOf(e.getData()),
-                    Map.of("toolCallId", safe(e.getToolCallId())), elapsedMs));
+                    toolMetadata(e.getToolCallId(), null), elapsedMs));
         } else if (event instanceof ToolResultEndEvent e) {
             events.add(of(context, RuntimeEventType.TOOL_RESULT_FINISHED, "工具结果返回完成", null,
-                    Map.of("toolCallId", safe(e.getToolCallId()), "state", safe(e.getState())), elapsedMs));
+                    toolResultMetadata(e.getToolCallId(), e.getState()), elapsedMs));
         } else if (event instanceof ExceedMaxItersEvent e) {
             events.add(of(context, RuntimeEventType.RUNTIME_WARNING, "超过最大循环次数", null,
                     Map.of("currentIter", e.getCurrentIter(), "maxIters", e.getMaxIters()), elapsedMs));
@@ -104,6 +104,26 @@ class AgentScopeEventTranslator {
                 event.toString(), Map.of("sourceEvent", simpleName, "eventType", safe(event.getType())), elapsedMs);
     }
 
+
+    private Map<String, Object> toolMetadata(Object toolCallId, Object toolName) {
+        String callId = safe(toolCallId);
+        String name = safe(toolName);
+        return Map.of(
+                "toolCallId", callId,
+                "callId", callId,
+                "tool", name,
+                "toolName", name
+        );
+    }
+
+    private Map<String, Object> toolResultMetadata(Object toolCallId, Object state) {
+        String callId = safe(toolCallId);
+        return Map.of(
+                "toolCallId", callId,
+                "callId", callId,
+                "state", safe(state)
+        );
+    }
     private RuntimeEvent of(RuntimeContext context, RuntimeEventType type, String stage, String content,
                             Map<String, Object> metadata, long elapsedMs) {
         return RuntimeEvent.of(context.getRunId(), context.getTraceId(), type, stage, content, metadata, elapsedMs);
@@ -113,4 +133,5 @@ class AgentScopeEventTranslator {
         return value == null ? "" : String.valueOf(value);
     }
 }
+
 

@@ -4,30 +4,44 @@
       <button class="topbar-icon-btn" @click="uiStore.toggleLeftSidebar()" title="切换侧栏">
         <i class="pi pi-bars"></i>
       </button>
-      <span class="topbar-title">
-        <i class="pi pi-bolt" style="color: var(--accent); margin-right: 4px;"></i>
-        编码助手
-      </span>
+      <div class="topbar-brand">
+        <i class="pi pi-bolt" style="color: var(--accent);"></i>
+        <span class="topbar-title">CodingAgent</span>
+      </div>
     </div>
 
     <div class="topbar-center">
+      <!-- 当前会话标题或工作区信息 -->
+      <div v-if="chatStore.currentSession" class="session-info">
+        <i class="pi pi-comment" style="font-size: 0.75rem; color: var(--text-muted);"></i>
+        <span class="session-title-bar">{{ chatStore.currentSession.title || '未命名会话' }}</span>
+      </div>
+      <div v-else-if="workspaceStore.currentWorkspace" class="session-info">
+        <i class="pi pi-folder" style="font-size: 0.75rem; color: var(--text-muted);"></i>
+        <span class="session-title-bar">{{ workspaceStore.currentWorkspace.name }}</span>
+      </div>
+    </div>
+
+    <div class="topbar-right">
+      <!-- 工作区选择器 -->
       <div class="workspace-selector-wrap">
         <Select
           v-model="selectedWorkspaceId"
           :options="workspaceOptions"
           optionLabel="label"
           optionValue="value"
-          placeholder="选择工作区..."
+          placeholder="工作区..."
           class="workspace-select"
           @change="onWorkspaceChange"
         />
         <button class="topbar-icon-btn add-ws" @click="showRegisterDialog = true" title="注册新工作区">
-          <i class="pi pi-plus"></i>
+          <i class="pi pi-plus" style="font-size: 0.7rem;"></i>
         </button>
       </div>
-    </div>
 
-    <div class="topbar-right">
+      <div class="topbar-divider"></div>
+
+      <!-- 运行面板切换 -->
       <button
         class="topbar-icon-btn"
         @click="uiStore.toggleRightPanel()"
@@ -36,12 +50,12 @@
       >
         <i class="pi pi-chart-line"></i>
       </button>
+      <!-- 设置 -->
       <router-link to="/settings" class="topbar-icon-btn" title="设置">
         <i class="pi pi-cog"></i>
       </router-link>
     </div>
 
-    <!-- Register workspace dialog -->
     <RegisterWorkspaceDialog v-model:visible="showRegisterDialog" />
   </header>
 </template>
@@ -88,25 +102,57 @@ async function onWorkspaceChange() {
   flex-shrink: 0;
 }
 
-.topbar-left,
-.topbar-right {
+.topbar-left {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
 }
 
-.topbar-title {
-  font-size: var(--font-size-base);
-  font-weight: 600;
-  color: var(--text-primary);
+.topbar-brand {
   display: flex;
   align-items: center;
+  gap: 6px;
+}
+
+.topbar-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.2px;
 }
 
 .topbar-center {
   flex: 1;
   display: flex;
   justify-content: center;
+  min-width: 0;
+}
+
+.session-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.session-title-bar {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.topbar-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border-color);
 }
 
 .workspace-selector-wrap {
@@ -116,17 +162,17 @@ async function onWorkspaceChange() {
 }
 
 .workspace-select {
-  width: 240px;
-  font-size: var(--font-size-sm);
+  width: 160px;
+  font-size: var(--font-size-xs);
 }
 
 .add-ws {
-  width: 28px;
-  height: 28px;
-  font-size: 0.8rem;
+  width: 24px;
+  height: 24px;
+  font-size: 0.7rem;
   background: var(--accent);
   color: white;
-  border-radius: 50%;
+  border-radius: var(--radius-sm);
 }
 
 .add-ws:hover {
@@ -143,9 +189,10 @@ async function onWorkspaceChange() {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   transition: all 0.15s;
   text-decoration: none;
+  font-size: var(--font-size-sm);
 }
 
 .topbar-icon-btn:hover {

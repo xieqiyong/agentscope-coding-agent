@@ -1,15 +1,16 @@
 :root {
   /* Colors */
   --bg-main: #f8fafc;
-  --bg-sidebar: #1e293b;
+  --bg-sidebar: #ffffff;
   --bg-topbar: #ffffff;
   --bg-panel: #ffffff;
   --bg-hover: #f1f5f9;
-  --bg-chat-user: #3b82f6;
+  --bg-chat-user: #eff6ff;
   --bg-chat-agent: #ffffff;
   --bg-tool-card: #f8fafc;
   --bg-diff-added: #dcfce7;
   --bg-diff-removed: #fee2e2;
+  --bg-input: #f1f5f9;
 
   --text-primary: #1e293b;
   --text-secondary: #64748b;
@@ -28,9 +29,9 @@
   --warning: #f59e0b;
 
   /* Layout */
-  --topbar-height: 48px;
+  --topbar-height: 44px;
   --sidebar-width: 260px;
-  --right-panel-width: 320px;
+  --right-panel-width: 340px;
 
   /* Spacing */
   --spacing-xs: 4px;

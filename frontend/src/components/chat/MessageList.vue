@@ -1,9 +1,10 @@
-<template>
+﻿<template>
   <div class="message-list">
     <ChatMessage
       v-for="msg in chatStore.messages"
       :key="msg.id"
       :message="msg"
+      @review-confirmation="$emit('reviewConfirmation', $event)"
     />
     <div v-if="chatStore.isStreaming && !lastMessageIsStreaming" class="typing-indicator">
       <span class="dot"></span>
@@ -17,6 +18,11 @@
 import { computed } from 'vue'
 import ChatMessage from './ChatMessage.vue'
 import { useChatStore } from '@/stores/chat'
+import type { Confirmation } from '@/types'
+
+defineEmits<{
+  reviewConfirmation: [confirmation: Confirmation]
+}>()
 
 const chatStore = useChatStore()
 
@@ -30,7 +36,10 @@ const lastMessageIsStreaming = computed(() => {
 .message-list {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-md);
+  gap: var(--spacing-xs);
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 0 var(--spacing-lg);
 }
 
 .typing-indicator {
@@ -40,8 +49,8 @@ const lastMessageIsStreaming = computed(() => {
 }
 
 .dot {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: var(--text-muted);
   animation: bounce 1.4s infinite ease-in-out both;
@@ -56,3 +65,5 @@ const lastMessageIsStreaming = computed(() => {
   40% { transform: scale(1); }
 }
 </style>
+
+

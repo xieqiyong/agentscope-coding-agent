@@ -1,7 +1,9 @@
-import { defineStore } from 'pinia'
+﻿import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { workspaceApi } from '@/api/workspace'
 import type { Workspace, FileNode } from '@/types'
+
+const STORAGE_WORKSPACE_ID = 'coding-agent-current-workspace-id'
 
 export const useWorkspaceStore = defineStore('workspace', () => {
   const workspaces = ref<Workspace[]>([])
@@ -34,6 +36,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     try {
       const res: any = await workspaceApi.getById(id)
       currentWorkspace.value = res.data || null
+      if (currentWorkspace.value) {
+        localStorage.setItem(STORAGE_WORKSPACE_ID, String(currentWorkspace.value.id))
+      }
     } catch (e: any) {
       error.value = e.message || '选择工作区失败'
       currentWorkspace.value = null
@@ -48,6 +53,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       const newWorkspace = res.data
       workspaces.value.push(newWorkspace)
       currentWorkspace.value = newWorkspace
+      localStorage.setItem(STORAGE_WORKSPACE_ID, String(newWorkspace.id))
       return newWorkspace
     } catch (e: any) {
       error.value = e.message || '注册工作区失败'
@@ -67,9 +73,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
 
+  function restoreWorkspaceId(): string | null {
+    return localStorage.getItem(STORAGE_WORKSPACE_ID)
+  }
+
   function clearWorkspace() {
     currentWorkspace.value = null
     fileTree.value = []
+    localStorage.removeItem(STORAGE_WORKSPACE_ID)
   }
 
   return {
@@ -84,6 +95,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     selectWorkspace,
     registerWorkspace,
     fetchFileTree,
+    restoreWorkspaceId,
     clearWorkspace,
   }
 })

@@ -36,7 +36,7 @@ public class AgentEventEntity extends BaseEntity {
      * 事件正文
      */
     @Lob
-    @Column(name = "content", nullable = true)
+    @Column(name = "content", nullable = true, columnDefinition = "LONGTEXT")
     private String content;
     /**
      * 事件元数据 JSON

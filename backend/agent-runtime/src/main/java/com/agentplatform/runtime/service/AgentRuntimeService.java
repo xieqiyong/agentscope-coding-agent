@@ -84,7 +84,8 @@ public class AgentRuntimeService {
                     "智能体运行已完成", Map.of(
                             "inputTokens", result.getInputTokens(),
                             "outputTokens", result.getOutputTokens(),
-                            "modelCallCount", result.getModelCallCount()
+                            "modelCallCount", result.getModelCallCount(),
+                            "conversationId", conversation.getId()
                     ), elapsedMs(started));
             result.setStatus("COMPLETED");
             return result;
@@ -197,4 +198,6 @@ public class AgentRuntimeService {
         return value == null ? "" : value;
     }
 }
+
+
 

@@ -1,10 +1,10 @@
 <template>
   <div class="runtime-event-list">
     <div v-if="runtimeStore.events.length === 0" class="empty-events">
-      暂无运行事件。
+      暂无运行事件
     </div>
     <div v-for="event in runtimeStore.events" :key="event.id" :class="['event-item', event.severity]">
-      <i :class="getEventIcon(event.type)" style="font-size: 0.75rem;"></i>
+      <i :class="getEventIcon(event.type)" style="font-size: 0.7rem;"></i>
       <div class="event-body">
         <span class="event-label">{{ event.label }}</span>
         <span v-if="event.detail" class="event-detail">{{ event.detail }}</span>
@@ -16,22 +16,26 @@
 
 <script setup lang="ts">
 import { useRuntimeStore } from '@/stores/runtime'
-import type { AgentEventType } from '@/types/events'
+import type { RuntimeEventType } from '@/types/events'
 
 const runtimeStore = useRuntimeStore()
 
-function getEventIcon(type: AgentEventType): string {
+function getEventIcon(type: RuntimeEventType): string {
   const icons: Record<string, string> = {
-    agent_started: 'pi pi-play',
-    agent_finished: 'pi pi-stop',
-    model_call_started: 'pi pi-bolt',
-    model_call_finished: 'pi pi-check',
-    answer_delta: 'pi pi-pencil',
-    tool_call_started: 'pi pi-wrench',
-    tool_call_args_delta: 'pi pi-wrench',
-    tool_result_delta: 'pi pi-wrench',
-    runtime_warning: 'pi pi-exclamation-triangle',
-    confirmation_required: 'pi pi-question-circle',
+    RUN_STARTED: 'pi pi-play',
+    AGENT_STARTED: 'pi pi-play',
+    RUN_FINISHED: 'pi pi-stop',
+    AGENT_FINISHED: 'pi pi-stop',
+    MODEL_CALL_STARTED: 'pi pi-bolt',
+    MODEL_CALL_FINISHED: 'pi pi-check',
+    ANSWER_DELTA: 'pi pi-pencil',
+    ANSWER_FINISHED: 'pi pi-check',
+    TOOL_CALL_STARTED: 'pi pi-wrench',
+    TOOL_CALL_FINISHED: 'pi pi-wrench',
+    TOOL_RESULT_FINISHED: 'pi pi-check-circle',
+    RUNTIME_WARNING: 'pi pi-exclamation-triangle',
+    CONFIRMATION_REQUIRED: 'pi pi-question-circle',
+    RUN_ERROR: 'pi pi-times-circle',
   }
   return icons[type] || 'pi pi-circle'
 }
@@ -85,7 +89,7 @@ function getEventIcon(type: AgentEventType): string {
 
 .event-duration {
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   color: var(--text-muted);
   flex-shrink: 0;
 }

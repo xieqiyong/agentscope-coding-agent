@@ -21,7 +21,7 @@ public class AgentRunEntity extends BaseEntity {
     /**
      * 追踪 ID
      */
-    @Column(name = "trace_id", nullable = false, length = 64)
+    @Column(name = "trace_id", nullable = false, length = 256)
     private String traceId;
     /**
      * 会话 ID
@@ -52,7 +52,7 @@ public class AgentRunEntity extends BaseEntity {
      * 失败原因
      */
     @Lob
-    @Column(name = "error_message", nullable = true)
+    @Column(name = "error_message", nullable = true, columnDefinition = "LONGTEXT")
     private String errorMessage;
     /**
      * 输入 token

@@ -6,6 +6,8 @@ import com.agentplatform.runtime.model.RuntimeEventType;
 import com.agentplatform.runtime.service.AgentRuntimeService;
 import jakarta.annotation.PreDestroy;
 import jakarta.annotation.Resource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -26,10 +28,12 @@ import java.util.concurrent.Executors;
 @RequestMapping("/api/agent-runtime")
 public class AgentRuntimeController {
 
+    private static final Logger log = LoggerFactory.getLogger(AgentRuntimeController.class);
+
     @Resource
     private AgentRuntimeService agentRuntimeService;
 
-    private final ExecutorService executorService = Executors.newCachedThreadPool();
+    private final ExecutorService executorService = Executors.newFixedThreadPool(10);
 
     @PostMapping(value = "/chat-stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter chatStream(@RequestBody AgentRunCommand command) {
@@ -52,8 +56,12 @@ public class AgentRuntimeController {
             emitter.send(SseEmitter.event()
                     .name(event.getType() != null ? event.getType().name() : "RAW_EVENT")
                     .data(event, MediaType.APPLICATION_JSON));
-        } catch (IOException ignored) {
+        } catch (IOException e) {
             // 中文注释：客户端断开时不继续抛出异常，后台执行链路会自行收尾。
+            log.warn("SSE 客户端已断开，type={}，runId={}，原因={}", event.getType(), event.getRunId(), e.getMessage());
+        } catch (IllegalStateException e) {
+            // 中文注释：连接已经完成或超时时，SseEmitter 可能抛出状态异常，这里只记录不拖垮主链路。
+            log.warn("SSE 连接状态异常，type={}，runId={}，原因={}", event.getType(), event.getRunId(), e.getMessage());
         }
     }
 
@@ -61,5 +69,8 @@ public class AgentRuntimeController {
     public void shutdown() {
         executorService.shutdownNow();
     }
-}
 
+    private long elapsedMs(long startedNanos) {
+        return (System.nanoTime() - startedNanos) / 1_000_000;
+    }
+}

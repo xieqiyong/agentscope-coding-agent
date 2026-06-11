@@ -1,7 +1,7 @@
 <template>
   <div class="timing-panel">
     <div v-if="!runtimeStore.agentStartTime" class="empty-timing">
-      运行一次 Agent 任务后查看耗时统计。
+      运行一次 Agent 任务后查看耗时统计
     </div>
     <template v-else>
       <div class="stat-row">
@@ -10,18 +10,18 @@
       </div>
       <div class="stat-row">
         <span class="stat-label">模型调用</span>
-        <span class="stat-value">{{ runtimeStore.modelCallCount }} 次 ({{ formatMs(runtimeStore.totalModelTimeMs) }})</span>
+        <span class="stat-value">{{ runtimeStore.modelCallCount }} 次 · {{ formatMs(runtimeStore.totalModelTimeMs) }}</span>
       </div>
       <div class="stat-row">
         <span class="stat-label">工具调用</span>
-        <span class="stat-value">{{ runtimeStore.toolCallCount }} 次 ({{ formatMs(runtimeStore.totalToolTimeMs) }})</span>
+        <span class="stat-value">{{ runtimeStore.toolCallCount }} 次 · {{ formatMs(runtimeStore.totalToolTimeMs) }}</span>
       </div>
 
       <div v-if="perToolEntries.length > 0" class="per-tool-section">
         <div class="section-label">按工具统计</div>
         <div v-for="[name, stats] in perToolEntries" :key="name" class="stat-row">
           <span class="stat-label tool-name">{{ name }}</span>
-          <span class="stat-value">{{ stats.count }}x ({{ formatMs(stats.totalTimeMs) }})</span>
+          <span class="stat-value">{{ stats.count }}x · {{ formatMs(stats.totalTimeMs) }}</span>
         </div>
       </div>
     </template>

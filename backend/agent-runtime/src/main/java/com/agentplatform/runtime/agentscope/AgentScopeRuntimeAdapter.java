@@ -47,8 +47,9 @@ public class AgentScopeRuntimeAdapter {
                 new CodingAgentWorkspaceTools(context, sandboxPathResolver, patchRepository, patchFileRepository);
         toolkit.registerTool(workspaceTools);
 
+        String modelBaseUrl = normalizeModelBaseUrl(context.getModelBaseUrl());
         OpenAIChatModel.Builder modelBuilder = OpenAIChatModel.builder()
-                .baseUrl(context.getModelBaseUrl())
+                .baseUrl(modelBaseUrl)
                 .modelName(context.getModelName())
                 .stream(true);
         if (StringUtils.hasText(context.getApiKey())) {
@@ -95,6 +96,18 @@ public class AgentScopeRuntimeAdapter {
         }
     }
 
+    private String normalizeModelBaseUrl(String baseUrl) {
+        String normalized = baseUrl == null ? "" : baseUrl.trim();
+        while (normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        String chatCompletionsSuffix = "/chat/completions";
+        if (normalized.endsWith(chatCompletionsSuffix)) {
+            // AgentScope/OpenAI SDK 需要基础地址，不能传完整的 chat-completions 接口地址。
+            normalized = normalized.substring(0, normalized.length() - chatCompletionsSuffix.length());
+        }
+        return normalized;
+    }
     private List<Msg> buildInputMessages(RuntimeContext context) {
         List<Msg> messages = new ArrayList<>();
         for (ConversationMessageEntity message : context.getRecentMessages()) {

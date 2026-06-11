@@ -3,10 +3,12 @@
     <div class="panel-tabs">
       <div class="tab-bar">
         <button :class="['tab-btn', { active: uiStore.rightPanelTab === 'events' }]" @click="uiStore.setRightPanelTab('events')">
+          <i class="pi pi-list" style="font-size: 0.7rem;"></i>
           运行事件
         </button>
         <button :class="['tab-btn', { active: uiStore.rightPanelTab === 'timing' }]" @click="uiStore.setRightPanelTab('timing')">
-          耗时统计
+          <i class="pi pi-clock" style="font-size: 0.7rem;"></i>
+          耗时
         </button>
       </div>
       <div class="panel-content">
@@ -28,7 +30,7 @@ const uiStore = useUiStore()
 <style scoped>
 .right-panel {
   width: var(--right-panel-width);
-  background: var(--bg-panel);
+  background: var(--bg-sidebar);
   border-left: 1px solid var(--border-color);
   flex-shrink: 0;
   display: flex;
@@ -55,15 +57,19 @@ const uiStore = useUiStore()
   border: none;
   background: transparent;
   cursor: pointer;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
   font-weight: 500;
   color: var(--text-muted);
   border-bottom: 2px solid transparent;
   transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
 
 .tab-btn:hover {
-  color: var(--text-primary);
+  color: var(--text-secondary);
   background: var(--bg-hover);
 }
 

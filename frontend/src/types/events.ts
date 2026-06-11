@@ -1,89 +1,57 @@
-import type { Confirmation, RiskLevel } from './index'
+import type { RiskLevel } from './index'
 
-// ==================== SSE Event Types ====================
+// ==================== 后端 RuntimeEventType 枚举 ====================
 
-export type AgentEventType =
-  | 'agent_started'
-  | 'agent_finished'
-  | 'model_call_started'
-  | 'model_call_finished'
-  | 'answer_delta'
-  | 'tool_call_started'
-  | 'tool_call_args_delta'
-  | 'tool_result_delta'
-  | 'runtime_warning'
-  | 'confirmation_required'
+export type RuntimeEventType =
+  | 'RUN_STARTED'
+  | 'CONTEXT_LOADED'
+  | 'AGENT_STARTED'
+  | 'AGENT_FINISHED'
+  | 'MODEL_CALL_STARTED'
+  | 'MODEL_CALL_FINISHED'
+  | 'ANSWER_STARTED'
+  | 'ANSWER_DELTA'
+  | 'ANSWER_FINISHED'
+  | 'THINKING_STARTED'
+  | 'THINKING_DELTA'
+  | 'THINKING_FINISHED'
+  | 'TOOL_CALL_STARTED'
+  | 'TOOL_CALL_ARGS_DELTA'
+  | 'TOOL_CALL_FINISHED'
+  | 'TOOL_RESULT_STARTED'
+  | 'TOOL_RESULT_DELTA'
+  | 'TOOL_RESULT_DATA_DELTA'
+  | 'TOOL_RESULT_FINISHED'
+  | 'CONFIRMATION_REQUIRED'
+  | 'CONFIRMATION_RESULT'
+  | 'EXTERNAL_EXECUTION_REQUIRED'
+  | 'EXTERNAL_EXECUTION_RESULT'
+  | 'RUNTIME_WARNING'
+  | 'RUN_FINISHED'
+  | 'RUN_ERROR'
+  | 'RAW_EVENT'
 
-export interface AgentStreamEvent {
-  type: AgentEventType
-  timestamp: number
-  payload: unknown
+// ==================== 后端 RuntimeEvent ====================
+
+export interface RuntimeEvent {
+  eventId: string
+  runId: number | null
+  traceId: string | null
+  type: RuntimeEventType
+  stage: string | null
+  content: string | null
+  metadata: Record<string, unknown>
+  elapsedMs: number
+  createdAt: string
 }
 
-// ==================== Specific Payloads ====================
-
-export interface AgentStartedPayload {
-  sessionId: string
-}
-
-export interface AgentFinishedPayload {
-  sessionId: string
-  totalDurationMs?: number
-}
-
-export interface ModelCallStartedPayload {
-  model: string
-}
-
-export interface ModelCallFinishedPayload {
-  durationMs: number
-  tokenUsage?: {
-    promptTokens?: number
-    completionTokens?: number
-    totalTokens?: number
-  }
-}
-
-export interface AnswerDeltaPayload {
-  delta: string
-}
-
-export interface ToolCallStartedPayload {
-  callId: string
-  toolName: string
-  args: Record<string, unknown>
-}
-
-export interface ToolCallArgsDeltaPayload {
-  callId: string
-  argsDelta: string
-}
-
-export interface ToolResultDeltaPayload {
-  callId: string
-  resultDelta: string
-}
-
-export interface RuntimeWarningPayload {
-  message: string
-  details?: string
-}
-
-export interface ConfirmationRequiredPayload {
-  patchId: string
-  files: Confirmation['files']
-  diff: string
-  riskLevel: RiskLevel
-  summary: string
-}
-
-// ==================== Runtime Event (frontend) ====================
+// ==================== 前端 RuntimeEvent（右面板用） ====================
 
 export type RuntimeEventSeverity = 'info' | 'success' | 'warn' | 'error'
 
-export interface RuntimeEvent {
+export interface FrontendRuntimeEvent {
   id: string
-  type: AgentEventType
+  type: RuntimeEventType
   timestamp: number
   label: string
   detail?: string

@@ -1,25 +1,29 @@
-<template>
+﻿<template>
   <div class="chat-panel">
     <div class="chat-messages" ref="messagesContainer">
-      <!-- No workspace selected -->
+      <!-- 没有选择工作区 -->
       <div v-if="!workspaceStore.hasWorkspace" class="empty-state">
-        <i class="pi pi-folder-open empty-icon"></i>
-        <p class="empty-title">选择一个工作区</p>
-        <p class="empty-desc">从顶部下拉选择已有工作区，或点击 + 注册新工作区，即可开始对话。</p>
+        <div class="empty-logo">
+          <i class="pi pi-bolt"></i>
+        </div>
+        <p class="empty-title">选择一个工作区开始</p>
+        <p class="empty-desc">从顶部下拉选择已有工作区，或点击 + 注册新工作区。</p>
       </div>
 
-      <!-- Workspace selected but no session -->
-      <div v-else-if="!chatStore.currentSession" class="empty-state">
-        <i class="pi pi-send empty-icon"></i>
-        <p class="empty-title">开始对话</p>
-        <p class="empty-desc">在左侧创建或选择一个会话，或者直接输入任务开始。</p>
+      <!-- 有工作区但没有消息 -->
+      <div v-else-if="chatStore.messages.length === 0 && !chatStore.isStreaming" class="empty-state">
+        <div class="empty-logo">
+          <i class="pi pi-bolt"></i>
+        </div>
+        <p class="empty-title">描述你的编码任务</p>
+        <p class="empty-desc">Agent 会读取工作区文件、搜索代码，并生成可审查的修改方案。</p>
       </div>
 
-      <!-- Message list -->
-      <MessageList v-else />
+      <!-- 消息列表 -->
+      <MessageList v-else @review-confirmation="$emit('reviewConfirmation', $event)" />
     </div>
 
-    <!-- Chat input -->
+    <!-- 输入栏 -->
     <ChatInput />
   </div>
 </template>
@@ -30,20 +34,35 @@ import MessageList from '@/components/chat/MessageList.vue'
 import ChatInput from '@/components/chat/ChatInput.vue'
 import { useChatStore } from '@/stores/chat'
 import { useWorkspaceStore } from '@/stores/workspace'
+import type { Confirmation } from '@/types'
+
+defineEmits<{
+  reviewConfirmation: [confirmation: Confirmation]
+}>()
 
 const chatStore = useChatStore()
 const workspaceStore = useWorkspaceStore()
 const messagesContainer = ref<HTMLElement | null>(null)
 
-// Auto-scroll on new messages
-watch(
-  () => chatStore.messages.length,
-  async () => {
-    await nextTick()
+// 滚动到底部
+function scrollToBottom() {
+  nextTick(() => {
     if (messagesContainer.value) {
       messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
     }
-  },
+  })
+}
+
+// 新消息时自动滚动
+watch(
+  () => chatStore.messages.length,
+  () => scrollToBottom(),
+)
+
+// 流式输出时滚动到底部
+watch(
+  () => chatStore.streamingText,
+  () => scrollToBottom(),
 )
 </script>
 
@@ -54,12 +73,13 @@ watch(
   flex-direction: column;
   min-width: 0;
   overflow: hidden;
+  background: var(--bg-main);
 }
 
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: var(--spacing-md);
+  padding: var(--spacing-lg) 0;
 }
 
 .empty-state {
@@ -70,12 +90,20 @@ watch(
   height: 100%;
   color: var(--text-muted);
   text-align: center;
+  padding: var(--spacing-xl);
 }
 
-.empty-icon {
-  font-size: 3rem;
-  margin-bottom: var(--spacing-md);
-  opacity: 0.3;
+.empty-logo {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-hover);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: var(--spacing-lg);
+  font-size: 1.5rem;
+  color: var(--accent);
 }
 
 .empty-title {
@@ -88,5 +116,8 @@ watch(
 .empty-desc {
   font-size: var(--font-size-sm);
   max-width: 360px;
+  color: var(--text-muted);
+  line-height: 1.5;
 }
 </style>
+

@@ -1,4 +1,4 @@
-// ==================== Workspace ====================
+﻿// ==================== Workspace ====================
 
 export interface Workspace {
   id: string
@@ -39,6 +39,7 @@ export interface ChatMessage {
   content: string
   timestamp: string
   toolCalls?: ToolCallInfo[]
+  confirmation?: Confirmation
   isStreaming?: boolean
 }
 
@@ -46,10 +47,12 @@ export interface ToolCallInfo {
   callId: string
   toolName: string
   args: Record<string, unknown>
+  argsText?: string
   result?: string
   status: 'running' | 'completed' | 'error'
   startedAt?: number
   durationMs?: number
+  patchId?: string
 }
 
 // ==================== Memory ====================
@@ -99,3 +102,7 @@ export interface PatchFile {
   additions: number
   deletions: number
 }
+
+
+
+

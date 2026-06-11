@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import { useRuntimeStore } from '@/stores/runtime'
-import type { AgentStreamEvent } from '@/types/events'
+import type { RuntimeEvent, RuntimeEventType } from '@/types/events'
 
 export function useSse() {
   const chatStore = useChatStore()
@@ -9,14 +9,36 @@ export function useSse() {
   const abortController = ref<AbortController | null>(null)
   const error = ref<string | null>(null)
 
-  async function start(url: string, body: Record<string, unknown>) {
+  /**
+   * 发送用户消息并通过 SSE 接收后端 RuntimeEvent 流。
+   *
+   * 后端 SSE 格式：
+   *   event: ANSWER_DELTA
+   *   data: {"eventId":"...","type":"ANSWER_DELTA","stage":"回答中","content":"你好","metadata":{},"elapsedMs":123}
+   *
+   *   event: RUN_FINISHED
+   *   data: {"eventId":"...","type":"RUN_FINISHED",...}
+   */
+  async function start(body: {
+    workspaceId: number
+    agentId?: number
+    conversationId?: number
+    message: string
+    title?: string
+    userId?: string
+    maxIterations?: number
+    timeoutSeconds?: number
+    modelBaseUrl?: string
+    modelName?: string
+    apiKey?: string
+  }) {
     error.value = null
     abortController.value = new AbortController()
 
     runtimeStore.startAgentRun()
 
     try {
-      const response = await fetch(url, {
+      const response = await fetch('/api/agent-runtime/chat-stream', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -32,7 +54,7 @@ export function useSse() {
 
       const reader = response.body?.getReader()
       if (!reader) {
-        throw new Error('No readable stream available')
+        throw new Error('无法获取 SSE 流')
       }
 
       const decoder = new TextDecoder()
@@ -46,28 +68,22 @@ export function useSse() {
 
         buffer += decoder.decode(value, { stream: true })
 
-        // Parse SSE lines
         const lines = buffer.split('\n')
-        buffer = lines.pop() || '' // Keep incomplete line in buffer
+        buffer = lines.pop() || ''
 
         for (const line of lines) {
           if (line.startsWith('event:')) {
             currentEventType = line.slice(6).trim()
           } else if (line.startsWith('data:')) {
             currentData += line.slice(5).trim()
-          } else if (line === '' || line === '\r') {
-            // Empty line = event delimiter
+          } else if (line.trim() === '') {
+            // 空行 = 事件分隔符
             if (currentEventType && currentData) {
               try {
-                const payload = JSON.parse(currentData)
-                const event: AgentStreamEvent = {
-                  type: currentEventType as AgentStreamEvent['type'],
-                  timestamp: Date.now(),
-                  payload,
-                }
-                dispatchEvent(event)
+                const event: RuntimeEvent = JSON.parse(currentData)
+                dispatchEvent(currentEventType as RuntimeEventType, event)
               } catch {
-                // Non-JSON data, ignore
+                // 非 JSON data，忽略
               }
             }
             currentEventType = ''
@@ -77,7 +93,7 @@ export function useSse() {
       }
     } catch (e: any) {
       if (e.name === 'AbortError') {
-        // User cancelled, not an error
+        // 用户取消
       } else {
         const msg = e.message || 'SSE 连接失败'
         error.value = msg
@@ -85,52 +101,56 @@ export function useSse() {
       }
     } finally {
       runtimeStore.endAgentRun()
-      chatStore.handleEvent({
-        type: 'agent_finished',
-        timestamp: Date.now(),
-        payload: {},
-      })
+      chatStore.finalizeStreamingMessage()
     }
   }
 
-  function dispatchEvent(event: AgentStreamEvent) {
-    // Route to chat store
-    chatStore.handleEvent(event)
+  function dispatchEvent(type: RuntimeEventType, event: RuntimeEvent) {
+    // 路由到 chat store
+    chatStore.handleRuntimeEvent(type, event)
+    // 路由到 runtime store（右面板）
+    routeToRuntimeStore(type, event)
+  }
 
-    // Route to runtime store for observability
-    switch (event.type) {
-      case 'model_call_started':
-        // Track start time internally
-        break
-      case 'model_call_finished': {
-        const payload = event.payload as { durationMs?: number }
-        if (payload.durationMs) {
-          runtimeStore.recordModelCall(payload.durationMs)
-        }
+  function routeToRuntimeStore(type: RuntimeEventType, event: RuntimeEvent) {
+    switch (type) {
+      case 'MODEL_CALL_FINISHED': {
+        const duration = event.elapsedMs || 0
+        runtimeStore.recordModelCall(duration)
         break
       }
-      case 'tool_call_started': {
-        const payload = event.payload as { callId: string; toolName: string }
+      case 'TOOL_CALL_STARTED': {
         runtimeStore.addEvent({
-          id: `evt-${Date.now()}-${payload.callId}`,
-          type: event.type,
+          id: event.eventId,
+          type,
           timestamp: Date.now(),
-          label: payload.toolName,
-          detail: `started`,
+          label: event.metadata?.toolName as string || event.stage || '工具调用',
+          detail: event.content || undefined,
           severity: 'info',
         })
         break
       }
-      case 'tool_result_delta': {
-        const payload = event.payload as { callId: string; resultDelta: string; toolName?: string }
-        // We'll update duration in tool_call_started tracking; for now just note it
+      case 'TOOL_RESULT_FINISHED': {
+        const toolName = (event.metadata?.toolName as string) || '工具'
+        runtimeStore.recordToolCall(toolName, event.elapsedMs || 0)
         break
       }
-      case 'runtime_warning': {
-        const payload = event.payload as { message: string }
-        runtimeStore.recordWarning(payload.message)
+      case 'RUNTIME_WARNING':
+        runtimeStore.recordWarning(event.content || '警告')
         break
-      }
+      case 'RUN_ERROR':
+        runtimeStore.addEvent({
+          id: event.eventId,
+          type,
+          timestamp: Date.now(),
+          label: '运行错误',
+          detail: event.content || undefined,
+          severity: 'error',
+        })
+        break
+      default:
+        // 其他事件不重复记录到 runtime panel
+        break
     }
   }
 

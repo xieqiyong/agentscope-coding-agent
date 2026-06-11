@@ -1,36 +1,43 @@
 <template>
-  <aside class="left-sidebar" v-show="uiStore.leftSidebarOpen">
-    <div class="sidebar-content">
-      <!-- Sessions -->
+  <aside :class="['left-sidebar', { collapsed: !uiStore.leftSidebarOpen }]">
+    <!-- 折叠时只显示图标按钮 -->
+    <div v-if="!uiStore.leftSidebarOpen" class="sidebar-collapsed-icons">
+      <button class="sidebar-icon-item" @click="uiStore.toggleLeftSidebar()" title="展开侧栏">
+        <i class="pi pi-comments"></i>
+      </button>
+      <button class="sidebar-icon-item" @click="uiStore.toggleLeftSidebar()" title="文件">
+        <i class="pi pi-folder"></i>
+      </button>
+      <button class="sidebar-icon-item" @click="uiStore.toggleLeftSidebar()" title="记忆">
+        <i class="pi pi-bookmark"></i>
+      </button>
+    </div>
+
+    <!-- 展开时显示完整内容 -->
+    <div v-else class="sidebar-content">
+      <!-- 会话列表 -->
       <div class="sidebar-section">
-        <div class="section-header" @click="sessionsOpen = !sessionsOpen">
-          <i class="pi pi-comments" style="font-size: 0.85rem;"></i>
-          <span class="section-title">会话</span>
-          <i :class="['pi', sessionsOpen ? 'pi-chevron-down' : 'pi-chevron-right']" style="font-size: 0.7rem;"></i>
-        </div>
-        <div class="section-body" v-show="sessionsOpen">
-          <SessionList />
-        </div>
+        <SessionList />
       </div>
 
-      <!-- File Tree -->
+      <!-- 文件树（可折叠） -->
       <div class="sidebar-section">
         <div class="section-header" @click="filesOpen = !filesOpen">
-          <i class="pi pi-folder" style="font-size: 0.85rem;"></i>
+          <i class="pi pi-folder" style="font-size: 0.75rem;"></i>
           <span class="section-title">文件</span>
-          <i :class="['pi', filesOpen ? 'pi-chevron-down' : 'pi-chevron-right']" style="font-size: 0.7rem;"></i>
+          <i :class="['pi', filesOpen ? 'pi-chevron-down' : 'pi-chevron-right']" style="font-size: 0.6rem;"></i>
         </div>
         <div class="section-body" v-show="filesOpen">
           <FileTreePanel />
         </div>
       </div>
 
-      <!-- Memory -->
+      <!-- 记忆（可折叠） -->
       <div class="sidebar-section">
         <div class="section-header" @click="memoryOpen = !memoryOpen">
-          <i class="pi pi-bookmark" style="font-size: 0.85rem;"></i>
+          <i class="pi pi-bookmark" style="font-size: 0.75rem;"></i>
           <span class="section-title">记忆</span>
-          <i :class="['pi', memoryOpen ? 'pi-chevron-down' : 'pi-chevron-right']" style="font-size: 0.7rem;"></i>
+          <i :class="['pi', memoryOpen ? 'pi-chevron-down' : 'pi-chevron-right']" style="font-size: 0.6rem;"></i>
         </div>
         <div class="section-body" v-show="memoryOpen">
           <MemoryPanel />
@@ -49,7 +56,6 @@ import MemoryPanel from '@/components/memory/MemoryPanel.vue'
 
 const uiStore = useUiStore()
 
-const sessionsOpen = ref(true)
 const filesOpen = ref(false)
 const memoryOpen = ref(false)
 </script>
@@ -57,14 +63,47 @@ const memoryOpen = ref(false)
 <style scoped>
 .left-sidebar {
   width: var(--sidebar-width);
-  background: var(--bg-panel);
+  background: var(--bg-sidebar);
   border-right: 1px solid var(--border-color);
   overflow-y: auto;
   flex-shrink: 0;
+  transition: width 0.2s ease;
+}
+
+.left-sidebar.collapsed {
+  width: 48px;
+}
+
+.sidebar-collapsed-icons {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: var(--spacing-sm);
+  gap: var(--spacing-xs);
+}
+
+.sidebar-icon-item {
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  transition: all 0.15s;
+  font-size: var(--font-size-sm);
+}
+
+.sidebar-icon-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .sidebar-content {
-  padding: var(--spacing-sm) 0;
+  padding: 0;
 }
 
 .sidebar-section {
@@ -87,9 +126,9 @@ const memoryOpen = ref(false)
 
 .section-title {
   flex: 1;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }

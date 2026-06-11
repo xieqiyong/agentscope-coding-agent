@@ -1,9 +1,9 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { RuntimeEvent, AgentEventType, RuntimeEventSeverity } from '@/types/events'
+import type { FrontendRuntimeEvent, RuntimeEventType } from '@/types/events'
 
 export const useRuntimeStore = defineStore('runtime', () => {
-  const events = ref<RuntimeEvent[]>([])
+  const events = ref<FrontendRuntimeEvent[]>([])
   const modelCallCount = ref(0)
   const toolCallCount = ref(0)
   const agentStartTime = ref<number | null>(null)
@@ -20,7 +20,7 @@ export const useRuntimeStore = defineStore('runtime', () => {
 
   const isAgentRunning = computed(() => agentStartTime.value !== null && agentEndTime.value === null)
 
-  function addEvent(event: RuntimeEvent) {
+  function addEvent(event: FrontendRuntimeEvent) {
     events.value.push(event)
   }
 
@@ -29,9 +29,9 @@ export const useRuntimeStore = defineStore('runtime', () => {
     totalModelTimeMs.value += durationMs
     addEvent({
       id: `evt-${Date.now()}-${modelCallCount.value}`,
-      type: 'model_call_finished',
+      type: 'MODEL_CALL_FINISHED',
       timestamp: Date.now(),
-      label: `Model call #${modelCallCount.value}`,
+      label: `模型调用 #${modelCallCount.value}`,
       detail: `${durationMs}ms`,
       severity: 'success',
       durationMs,
@@ -49,7 +49,7 @@ export const useRuntimeStore = defineStore('runtime', () => {
 
     addEvent({
       id: `evt-${Date.now()}-${toolCallCount.value}`,
-      type: 'tool_result_delta',
+      type: 'TOOL_RESULT_FINISHED',
       timestamp: Date.now(),
       label: `${toolName}`,
       detail: `完成，耗时 ${durationMs}ms`,
@@ -61,7 +61,7 @@ export const useRuntimeStore = defineStore('runtime', () => {
   function recordWarning(message: string) {
     addEvent({
       id: `evt-${Date.now()}-warn`,
-      type: 'runtime_warning',
+      type: 'RUNTIME_WARNING',
       timestamp: Date.now(),
       label: '警告',
       detail: message,
@@ -75,7 +75,7 @@ export const useRuntimeStore = defineStore('runtime', () => {
     agentEndTime.value = null
     addEvent({
       id: `evt-${Date.now()}-start`,
-      type: 'agent_started',
+      type: 'RUN_STARTED',
       timestamp: Date.now(),
       label: 'Agent 启动',
       severity: 'info',
@@ -86,7 +86,7 @@ export const useRuntimeStore = defineStore('runtime', () => {
     agentEndTime.value = Date.now()
     addEvent({
       id: `evt-${Date.now()}-end`,
-      type: 'agent_finished',
+      type: 'RUN_FINISHED',
       timestamp: Date.now(),
       label: 'Agent 完成',
       detail: `总耗时 ${totalAgentTimeMs.value}ms`,

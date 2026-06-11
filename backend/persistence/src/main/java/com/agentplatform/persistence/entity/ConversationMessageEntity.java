@@ -31,7 +31,7 @@ public class ConversationMessageEntity extends BaseEntity {
      * 消息正文
      */
     @Lob
-    @Column(name = "content", nullable = false)
+    @Column(name = "content", nullable = false, columnDefinition = "LONGTEXT")
     private String content;
     /**
      * token 数
