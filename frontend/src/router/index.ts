@@ -5,17 +5,7 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      name: 'home',
-      component: () => import('@/views/WorkspaceSelectView.vue'),
-    },
-    {
-      path: '/ws/:workspaceId',
       name: 'workspace',
-      component: () => import('@/views/AgentWorkspaceView.vue'),
-    },
-    {
-      path: '/ws/:workspaceId/s/:sessionId',
-      name: 'workspace-session',
       component: () => import('@/views/AgentWorkspaceView.vue'),
     },
     {

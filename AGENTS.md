@@ -47,6 +47,12 @@ Keep framework runtime and platform capabilities separate:
 - Never store secrets in memory by default.
 - Treat generated patches as proposals until approved.
 
+## Development Constraints
+
+- All API endpoints should use POST requests. Do not add new GET, PUT, PATCH, or DELETE endpoints unless the project owner explicitly approves an exception.
+- Code comments must be written in Chinese.
+- When injecting services, use dependency-injection annotations such as `@Autowired` or `@Resource`. Do not use constructor injection or Lombok constructor-based injection such as `@RequiredArgsConstructor` for service dependencies.
+
 ## First Implementation Milestone
 
 Implement an MVP with read-only workspace tools first:

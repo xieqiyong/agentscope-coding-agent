@@ -11,15 +11,20 @@
     </div>
 
     <div class="topbar-center">
-      <Select
-        v-model="selectedWorkspaceId"
-        :options="workspaceStore.workspaceOptions"
-        optionLabel="label"
-        optionValue="value"
-        placeholder="选择工作区..."
-        class="workspace-select"
-        @change="onWorkspaceChange"
-      />
+      <div class="workspace-selector-wrap">
+        <Select
+          v-model="selectedWorkspaceId"
+          :options="workspaceOptions"
+          optionLabel="label"
+          optionValue="value"
+          placeholder="选择工作区..."
+          class="workspace-select"
+          @change="onWorkspaceChange"
+        />
+        <button class="topbar-icon-btn add-ws" @click="showRegisterDialog = true" title="注册新工作区">
+          <i class="pi pi-plus"></i>
+        </button>
+      </div>
     </div>
 
     <div class="topbar-right">
@@ -35,27 +40,38 @@
         <i class="pi pi-cog"></i>
       </router-link>
     </div>
+
+    <!-- Register workspace dialog -->
+    <RegisterWorkspaceDialog v-model:visible="showRegisterDialog" />
   </header>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import Select from 'primevue/select'
 import { useUiStore } from '@/stores/ui'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { useChatStore } from '@/stores/chat'
+import RegisterWorkspaceDialog from '@/components/workspace/RegisterWorkspaceDialog.vue'
 
 const uiStore = useUiStore()
 const workspaceStore = useWorkspaceStore()
+const chatStore = useChatStore()
 
 const selectedWorkspaceId = ref<string | null>(workspaceStore.currentWorkspace?.id || null)
+const showRegisterDialog = ref(false)
+
+const workspaceOptions = computed(() => workspaceStore.workspaceOptions)
 
 watch(() => workspaceStore.currentWorkspace, (ws) => {
   if (ws) selectedWorkspaceId.value = ws.id
 })
 
-function onWorkspaceChange() {
+async function onWorkspaceChange() {
   if (selectedWorkspaceId.value) {
-    workspaceStore.selectWorkspace(selectedWorkspaceId.value)
+    await workspaceStore.selectWorkspace(selectedWorkspaceId.value)
+    await chatStore.fetchSessions(selectedWorkspaceId.value)
+    chatStore.clearSession()
   }
 }
 </script>
@@ -93,9 +109,28 @@ function onWorkspaceChange() {
   justify-content: center;
 }
 
+.workspace-selector-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
 .workspace-select {
-  width: 280px;
+  width: 240px;
   font-size: var(--font-size-sm);
+}
+
+.add-ws {
+  width: 28px;
+  height: 28px;
+  font-size: 0.8rem;
+  background: var(--accent);
+  color: white;
+  border-radius: 50%;
+}
+
+.add-ws:hover {
+  background: var(--accent-hover);
 }
 
 .topbar-icon-btn {

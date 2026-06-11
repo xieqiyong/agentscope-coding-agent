@@ -1,11 +1,18 @@
 <template>
   <div class="chat-panel">
     <div class="chat-messages" ref="messagesContainer">
-      <!-- Placeholder when no session -->
-      <div v-if="!chatStore.currentSession" class="empty-state">
+      <!-- No workspace selected -->
+      <div v-if="!workspaceStore.hasWorkspace" class="empty-state">
+        <i class="pi pi-folder-open empty-icon"></i>
+        <p class="empty-title">选择一个工作区</p>
+        <p class="empty-desc">从顶部下拉选择已有工作区，或点击 + 注册新工作区，即可开始对话。</p>
+      </div>
+
+      <!-- Workspace selected but no session -->
+      <div v-else-if="!chatStore.currentSession" class="empty-state">
         <i class="pi pi-send empty-icon"></i>
         <p class="empty-title">开始对话</p>
-        <p class="empty-desc">选择一个工作区和会话，或创建新会话开始。</p>
+        <p class="empty-desc">在左侧创建或选择一个会话，或者直接输入任务开始。</p>
       </div>
 
       <!-- Message list -->
@@ -22,8 +29,10 @@ import { ref, nextTick, watch } from 'vue'
 import MessageList from '@/components/chat/MessageList.vue'
 import ChatInput from '@/components/chat/ChatInput.vue'
 import { useChatStore } from '@/stores/chat'
+import { useWorkspaceStore } from '@/stores/workspace'
 
 const chatStore = useChatStore()
+const workspaceStore = useWorkspaceStore()
 const messagesContainer = ref<HTMLElement | null>(null)
 
 // Auto-scroll on new messages

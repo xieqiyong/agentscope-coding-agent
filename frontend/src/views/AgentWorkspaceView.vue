@@ -21,7 +21,6 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
 import TopBar from '@/components/layout/TopBar.vue'
 import LeftSidebar from '@/components/layout/LeftSidebar.vue'
 import ChatPanel from '@/components/layout/ChatPanel.vue'
@@ -31,7 +30,6 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useChatStore } from '@/stores/chat'
 import type { Confirmation } from '@/types'
 
-const route = useRoute()
 const workspaceStore = useWorkspaceStore()
 const chatStore = useChatStore()
 
@@ -51,36 +49,21 @@ watch(
   },
 )
 
-// Load workspace and session from route params
+// Load workspaces on mount, auto-select first if available
 onMounted(async () => {
-  const workspaceId = route.params.workspaceId as string
-  const sessionId = route.params.sessionId as string
-
-  if (workspaceId) {
-    await workspaceStore.selectWorkspace(workspaceId)
-  }
-
-  if (sessionId) {
-    await chatStore.selectSession(sessionId)
+  await workspaceStore.fetchWorkspaces()
+  if (!workspaceStore.currentWorkspace && workspaceStore.workspaces.length > 0) {
+    await workspaceStore.selectWorkspace(workspaceStore.workspaces[0].id)
+    await chatStore.fetchSessions(workspaceStore.workspaces[0].id)
   }
 })
 
-// Re-select session when route changes
+// Watch workspace change → reload sessions
 watch(
-  () => route.params.sessionId,
-  async (newSessionId) => {
-    if (newSessionId && typeof newSessionId === 'string') {
-      await chatStore.selectSession(newSessionId)
-    }
-  },
-)
-
-watch(
-  () => route.params.workspaceId,
-  async (newWorkspaceId) => {
-    if (newWorkspaceId && typeof newWorkspaceId === 'string') {
-      await workspaceStore.selectWorkspace(newWorkspaceId)
-      await chatStore.fetchSessions(newWorkspaceId)
+  () => workspaceStore.currentWorkspace?.id,
+  async (newId) => {
+    if (newId) {
+      await chatStore.fetchSessions(newId)
     }
   },
 )
