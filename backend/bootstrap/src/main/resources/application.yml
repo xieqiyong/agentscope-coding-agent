@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: agent-platform
+
+  datasource:
+    url: jdbc:mysql://180.76.225.232:3306/agent_platform?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: root
+    password: Xqy2018101992
+
+  jpa:
+    open-in-view: false
+    show-sql: false
+    hibernate:
+      # 开发阶段用 update 自动建表；稳定后建议切换到 Flyway/Liquibase。
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          time_zone: Asia/Shanghai
+
+  sql:
+    init:
+      mode: never
+
+server:
+  port: 8080
+
+logging:
+  level:
+    com.agentplatform: DEBUG
+    org.hibernate.SQL: WARN
