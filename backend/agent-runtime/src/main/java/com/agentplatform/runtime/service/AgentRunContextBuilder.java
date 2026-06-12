@@ -17,6 +17,9 @@ import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 /**
@@ -87,6 +90,8 @@ public class AgentRunContextBuilder {
                 ? agent.getSystemPrompt()
                 : "你是一个严谨的 Java 编码智能体，必须先理解项目上下文，再使用工具读取文件和提出修改方案。";
 
+        basePrompt = basePrompt + buildCurrentTimePrompt();
+
         basePrompt = basePrompt + "\n\n工具使用补充：\n"
                 + "1. 当前 workspace 内的普通代码修改，优先使用 apply_patch 直接应用 unified diff。\n"
                 + "2. 新建文件、整文件替换或大文件修改时，优先使用 write_file 直接写入。\n"
@@ -136,6 +141,18 @@ public class AgentRunContextBuilder {
                 4. 不要读取或输出密钥、token、证书、私钥等敏感内容。
                 5. 工具结果优先于模型猜测；如果证据不足，要明确说明。
                 """.formatted(basePrompt, workspace.getName(), workspace.getRootPath(), memoryText);
+    }
+
+    private String buildCurrentTimePrompt() {
+        ZoneId zoneId = ZoneId.of("Asia/Shanghai");
+        ZonedDateTime now = ZonedDateTime.now(zoneId);
+        String dateTime = now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z"));
+        return "\n\n【当前时间】\n"
+                + "- 当前日期：" + now.toLocalDate() + "\n"
+                + "- 当前时间：" + dateTime + "\n"
+                + "- 当前时区：Asia/Shanghai\n"
+                + "- 用户提到今天、昨天、明天、今年、最新、最近时，必须以这里的日期为准。\n"
+                + "- 不要根据模型训练记忆猜日期；涉及最新外部事实、版本、新闻、价格、政策时，必须使用 WebSearch 或明确说明未联网验证。";
     }
 
     private String firstNonBlank(String first, String second) {
