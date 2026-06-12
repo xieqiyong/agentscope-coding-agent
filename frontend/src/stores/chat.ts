@@ -269,7 +269,7 @@ export const useChatStore = defineStore('chat', () => {
     toolCall.status = 'completed'
     toolCall.durationMs = event.elapsedMs || (Date.now() - (toolCall.startedAt || Date.now()))
 
-    if (toolCall.toolName === 'propose_patch') {
+    if (isPatchProposalTool(toolCall.toolName)) {
       void registerPatchConfirmation(toolCall)
     }
   }
@@ -309,6 +309,10 @@ export const useChatStore = defineStore('chat', () => {
     return value && typeof value === 'object' && !Array.isArray(value)
       ? value as Record<string, unknown>
       : {}
+  }
+
+  function isPatchProposalTool(toolName: string): boolean {
+    return toolName === 'propose_patch' || toolName === 'propose_file_change'
   }
 
   function parseToolArgs(text?: string): Record<string, unknown> {

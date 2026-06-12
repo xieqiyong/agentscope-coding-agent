@@ -87,6 +87,12 @@ public class AgentRunContextBuilder {
                 ? agent.getSystemPrompt()
                 : "你是一个严谨的 Java 编码智能体，必须先理解项目上下文，再使用工具读取文件和提出修改方案。";
 
+        basePrompt = basePrompt + "\n\n工具使用补充：\n"
+                + "1. 修改已有片段时使用 propose_patch 提交 unified diff。\n"
+                + "2. 新建文件、整文件替换或大文件修改时，优先使用 propose_file_change。\n"
+                + "3. 多文件任务必须拆成多个单文件提案，不要让用户手动复制粘贴文件内容。\n"
+                + "4. propose_patch 和 propose_file_change 只会保存修改提案，不会直接写入磁盘；用户确认应用前，不能声称文件已经创建或修改完成。";
+
         StringBuilder memoryText = new StringBuilder();
         int count = 0;
         for (MemoryEntryEntity memory : memories) {
@@ -139,4 +145,3 @@ public class AgentRunContextBuilder {
         return fallback;
     }
 }
-

@@ -183,6 +183,61 @@ public class CodingAgentWorkspaceTools {
             sandboxPathResolver.resolvePath(rootPath(), file, false);
         }
 
+        return savePatchProposal(summary, unifiedDiff, files, "MODIFY");
+    }
+
+    @Tool(name = "propose_file_change", description = "保存单个文件的新建或整文件替换提案，适合创建 package.json、Vue 组件等大文件。不会直接写文件；多文件任务必须拆成多次调用。", readOnly = false)
+    public String proposeFileChange(
+            @ToolParam(name = "path", description = "工作区相对文件路径。") String path,
+            @ToolParam(name = "changeType", description = "变更类型：CREATE 或 REPLACE。") String changeType,
+            @ToolParam(name = "content", description = "文件完整内容。") String content,
+            @ToolParam(name = "summary", required = false, description = "本次单文件变更说明。") String summary) {
+        if (!StringUtils.hasText(path)) {
+            return "文件路径 path 不能为空";
+        }
+        if (content == null) {
+            content = "";
+        }
+        if (isSensitivePath(path)) {
+            return "拒绝修改敏感文件：" + path;
+        }
+
+        ResolvedWorkspacePath resolved = sandboxPathResolver.resolvePath(rootPath(), path, false);
+        String normalizedType = StringUtils.hasText(changeType) ? changeType.trim().toUpperCase() : "CREATE";
+        boolean exists = Files.exists(resolved.absolutePath());
+        if ("CREATE".equals(normalizedType) && exists) {
+            return "文件已存在，不能使用 CREATE，请改用 REPLACE：" + resolved.relativePath();
+        }
+        if ("REPLACE".equals(normalizedType) && !exists) {
+            return "文件不存在，不能使用 REPLACE，请改用 CREATE：" + resolved.relativePath();
+        }
+        if (!"CREATE".equals(normalizedType) && !"REPLACE".equals(normalizedType)) {
+            return "changeType 只支持 CREATE 或 REPLACE";
+        }
+
+        try {
+            String oldContent = "";
+            if (exists) {
+                byte[] oldBytes = Files.readAllBytes(resolved.absolutePath());
+                if (looksBinary(oldBytes)) {
+                    return "拒绝替换二进制文件：" + resolved.relativePath();
+                }
+                oldContent = new String(oldBytes, StandardCharsets.UTF_8);
+            }
+
+            String unifiedDiff = buildFullFileDiff(resolved.relativePath(), oldContent, content, "CREATE".equals(normalizedType));
+            return savePatchProposal(
+                    StringUtils.hasText(summary) ? summary : normalizedType + " " + resolved.relativePath(),
+                    unifiedDiff,
+                    Set.of(resolved.relativePath()),
+                    normalizedType
+            );
+        } catch (IOException e) {
+            return "生成文件变更提案失败：" + e.getMessage();
+        }
+    }
+
+    private String savePatchProposal(String summary, String unifiedDiff, Set<String> files, String changeType) {
         PatchEntity patch = new PatchEntity();
         patch.setRunId(context.getRunId());
         patch.setWorkspaceId(context.getWorkspace().getId());
@@ -196,7 +251,7 @@ public class CodingAgentWorkspaceTools {
             PatchFileEntity patchFile = new PatchFileEntity();
             patchFile.setPatchId(patch.getId());
             patchFile.setFilePath(file);
-            patchFile.setChangeType("MODIFY");
+            patchFile.setChangeType(changeType);
             patchFileRepository.save(patchFile);
         }
 
@@ -210,6 +265,42 @@ public class CodingAgentWorkspaceTools {
                 + "创建时间：" + createdAtText;
     }
 
+    private String buildFullFileDiff(String path, String oldContent, String newContent, boolean create) {
+        List<String> oldLines = splitLines(oldContent);
+        List<String> newLines = splitLines(newContent);
+        StringBuilder diff = new StringBuilder();
+        diff.append("--- ").append(create ? "/dev/null" : "a/" + path).append("\n");
+        diff.append("+++ b/").append(path).append("\n");
+        diff.append("@@ -")
+                .append(create ? 0 : 1)
+                .append(',')
+                .append(create ? 0 : oldLines.size())
+                .append(" +")
+                .append(newLines.isEmpty() ? 0 : 1)
+                .append(',')
+                .append(newLines.size())
+                .append(" @@\n");
+        if (!create) {
+            for (String line : oldLines) {
+                diff.append('-').append(line).append("\n");
+            }
+        }
+        for (String line : newLines) {
+            diff.append('+').append(line).append("\n");
+        }
+        return diff.toString();
+    }
+
+    private List<String> splitLines(String text) {
+        if (text == null || text.isEmpty()) {
+            return List.of();
+        }
+        String[] lines = text.split("\\R", -1);
+        if (lines.length > 0 && lines[lines.length - 1].isEmpty()) {
+            return List.of(lines).subList(0, lines.length - 1);
+        }
+        return List.of(lines);
+    }
     private String rootPath() {
         return context.getWorkspace().getRootPath();
     }

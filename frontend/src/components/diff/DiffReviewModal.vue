@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <Dialog
     :visible="visible"
     modal
@@ -37,7 +37,7 @@
           :disabled="applying"
         />
         <Button
-          label="确认提案"
+          label="确认并应用"
           icon="pi pi-check"
           severity="success"
           @click="onApprove"
@@ -81,11 +81,11 @@ async function onApprove() {
   applying.value = false
 
   if (ok) {
-    toast.add({ severity: 'success', summary: '已确认', detail: '修改提案已确认，后续由沙箱治理模块执行写入。', life: 3000 })
+    toast.add({ severity: 'success', summary: '已应用', detail: 'Patch 已通过沙箱校验并写入工作区。', life: 3000 })
     emit('approved', patchId)
     emit('update:visible', false)
   } else {
-    toast.add({ severity: 'error', summary: '确认失败', detail: 'Patch 确认失败，请重试。', life: 5000 })
+    toast.add({ severity: 'error', summary: '应用失败', detail: 'Patch 应用失败，请查看后端错误信息。', life: 5000 })
   }
 }
 

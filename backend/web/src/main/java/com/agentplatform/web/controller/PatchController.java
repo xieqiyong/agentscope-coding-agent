@@ -6,6 +6,8 @@ import com.agentplatform.persistence.entity.PatchEntity;
 import com.agentplatform.persistence.entity.PatchFileEntity;
 import com.agentplatform.persistence.repository.PatchFileRepository;
 import com.agentplatform.persistence.repository.PatchRepository;
+import com.agentplatform.sandbox.PatchApplyResult;
+import com.agentplatform.sandbox.PatchApplyService;
 import jakarta.annotation.Resource;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,7 +16,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -34,27 +35,21 @@ public class PatchController {
     @Resource
     private PatchFileRepository patchFileRepository;
 
-    /**
-     * 获取 patch 详情，供前端展示类似 Codex/Claude Code 的修改审查卡。
-     */
-    @GetMapping("/{id}")
-    public ApiResponse<Map<String, Object>> getById(@PathVariable Long id) {
-        PatchEntity patch = getPatch(id);
-        return ApiResponse.success(toDetail(patch));
-    }
+    @Resource
+    private PatchApplyService patchApplyService;
 
     /**
-     * 确认 patch 提案。
-     * 中文注释：MVP 暂不直接写文件；真正应用 diff 后续交给沙箱治理模块处理。
+     * 确认并应用 patch。
+     * 中文注释：真正写文件前会重新经过沙箱路径校验和 diff 上下文匹配。
      */
     @PostMapping("/{id}/apply")
     @Transactional
     public ApiResponse<Map<String, Object>> confirm(@PathVariable Long id) {
+        PatchApplyResult applyResult = patchApplyService.apply(id);
         PatchEntity patch = getPatch(id);
-        patch.setStatus("APPROVED");
-        patch.setAppliedAt(LocalDateTime.now());
-        patchRepository.save(patch);
-        return ApiResponse.success(toDetail(patch));
+        Map<String, Object> detail = toDetail(patch);
+        detail.put("applyResult", applyResult);
+        return ApiResponse.success(detail);
     }
 
     private PatchEntity getPatch(Long id) {

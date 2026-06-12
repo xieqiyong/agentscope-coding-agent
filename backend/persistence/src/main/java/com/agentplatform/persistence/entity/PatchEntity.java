@@ -43,7 +43,7 @@ public class PatchEntity extends BaseEntity {
      * 统一 diff 内容
      */
     @Lob
-    @Column(name = "diff_text", nullable = false)
+    @Column(name = "diff_text", nullable = false, columnDefinition = "LONGTEXT")
     private String diffText;
     /**
      * patch 状态

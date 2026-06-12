@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div :class="['chat-message', message.role]">
     <!-- 角色标签 -->
     <div class="message-role-label">
@@ -10,7 +10,7 @@
 
     <!-- 消息内容 -->
     <div class="message-body">
-      <!-- 工具调用轨迹：放在回答上方，默认整体折叠，避免挤占正文阅读空间。 -->
+      <!-- 工具调用轨迹 -->
       <div v-if="message.role === 'assistant' && toolCalls.length" class="tool-trace">
         <button class="tool-trace-toggle" type="button" @click="toolsExpanded = !toolsExpanded">
           <i class="pi pi-wrench" style="font-size: 0.72rem;"></i>
@@ -42,14 +42,14 @@
         </div>
       </div>
 
-
-      <!-- 代码修改提案：像 Codex/Claude Code 一样作为消息的一部分展示，点击后再打开 Diff。 -->
+      <!-- 代码修改提案 -->
       <ConfirmationCard
         v-if="message.confirmation"
         class="confirmation-inline"
         :confirmation="message.confirmation"
         @review="$emit('reviewConfirmation', $event)"
       />
+
       <!-- 助手消息：Markdown 渲染 -->
       <div
         v-if="message.role === 'assistant' && hasAssistantContent"
@@ -61,12 +61,28 @@
 
       <!-- Streaming cursor -->
       <span v-if="message.isStreaming" class="streaming-cursor">▊</span>
+
+      <!-- 消息操作栏：复制 + 点赞/点踩（仅流式结束后显示） -->
+      <div v-if="!message.isStreaming && hasContent" class="message-actions">
+        <button class="action-btn" @click="copyMessage" title="复制回答">
+          <i :class="copied ? 'pi pi-check' : 'pi pi-copy'" style="font-size: 0.72rem;"></i>
+          <span>{{ copied ? '已复制' : '复制' }}</span>
+        </button>
+        <template v-if="message.role === 'assistant'">
+          <button :class="['action-btn', { active: feedback === 'like' }]" @click="toggleFeedback('like')" title="点赞">
+            <i class="pi pi-thumbs-up" style="font-size: 0.72rem;"></i>
+          </button>
+          <button :class="['action-btn', { active: feedback === 'dislike' }]" @click="toggleFeedback('dislike')" title="点踩">
+            <i class="pi pi-thumbs-down" style="font-size: 0.72rem;"></i>
+          </button>
+        </template>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import { Marked } from 'marked'
 import { markedHighlight } from 'marked-highlight'
 import hljs from 'highlight.js'
@@ -83,6 +99,13 @@ defineEmits<{
 }>()
 
 const toolsExpanded = ref(false)
+const copied = ref(false)
+const feedback = ref<'like' | 'dislike' | null>(null)
+let copyTimer: ReturnType<typeof setTimeout> | null = null
+
+onBeforeUnmount(() => {
+  if (copyTimer) clearTimeout(copyTimer)
+})
 
 // 配置 marked，使用 marked-highlight 扩展实现代码高亮
 const marked = new Marked(
@@ -108,6 +131,7 @@ const marked = new Marked(
 const toolCalls = computed(() => props.message.toolCalls || [])
 const compactToolCalls = computed(() => toolCalls.value.slice(0, 3))
 const hasAssistantContent = computed(() => Boolean((props.message.content || '').trim()))
+const hasContent = computed(() => Boolean((props.message.content || '').trim()))
 
 const toolTraceState = computed(() => {
   if (toolCalls.value.some((tc) => tc.status === 'running')) return 'running'
@@ -130,6 +154,71 @@ const renderedContent = computed(() => {
   if (!text.trim()) return ''
   return marked.parse(text) as string
 })
+
+// 渲染完毕后给代码块注入复制按钮
+onMounted(() => {
+  addCopyButtonsToCodeBlocks()
+})
+
+import { watch, nextTick } from 'vue'
+watch(renderedContent, async () => {
+  await nextTick()
+  addCopyButtonsToCodeBlocks()
+})
+
+/**
+ * 给所有 pre>code 代码块加上复制按钮。
+ */
+function addCopyButtonsToCodeBlocks() {
+  const container = document.querySelector(`.chat-message.assistant .markdown-body`)
+  if (!container) return
+
+  // 找到当前组件的 markdown-body
+  const el = document.querySelectorAll('.chat-message .markdown-body pre')
+  el.forEach((pre) => {
+    if (pre.querySelector('.code-copy-btn')) return // 已有按钮
+    const btn = document.createElement('button')
+    btn.className = 'code-copy-btn'
+    btn.title = '复制代码'
+    btn.innerHTML = '<i class="pi pi-copy" style="font-size:0.7rem;"></i>'
+    btn.addEventListener('click', () => {
+      const code = pre.querySelector('code')
+      const text = code?.textContent || pre.textContent || ''
+      navigator.clipboard.writeText(text).then(() => {
+        btn.innerHTML = '<i class="pi pi-check" style="font-size:0.7rem;color:#22c55e;"></i>'
+        setTimeout(() => {
+          btn.innerHTML = '<i class="pi pi-copy" style="font-size:0.7rem;"></i>'
+        }, 2000)
+      })
+    })
+    // 确保 pre 是相对定位
+    ;(pre as HTMLElement).style.position = 'relative'
+    pre.appendChild(btn)
+  })
+}
+
+/**
+ * 复制整段回答内容（纯文本）。
+ */
+async function copyMessage() {
+  try {
+    await navigator.clipboard.writeText(props.message.content || '')
+    copied.value = true
+    if (copyTimer) clearTimeout(copyTimer)
+    copyTimer = setTimeout(() => {
+      copied.value = false
+    }, 2000)
+  } catch {
+    // 剪贴板权限被拒绝
+  }
+}
+
+/**
+ * 点赞/点踩切换。
+ */
+function toggleFeedback(type: 'like' | 'dislike') {
+  feedback.value = feedback.value === type ? null : type
+}
 
 function formatToolSignature(toolCall: ToolCallInfo): string {
   const entries = Object.entries(toolCall.args || {})
@@ -222,7 +311,7 @@ function formatArgValue(value: unknown): string {
   color: var(--text-primary);
 }
 
-/* 用户消息：靠右、带蓝色左边框 */
+/* 用户消息 */
 .user-content {
   white-space: pre-wrap;
   word-break: break-word;
@@ -283,8 +372,9 @@ function formatArgValue(value: unknown): string {
   font-size: 0.85em;
 }
 
-/* 代码块 - 深色终端风格 */
+/* 代码块 */
 .markdown-body :deep(pre) {
+  position: relative;
   background: #0d1117;
   color: #c9d1d9;
   border: 1px solid var(--border-color);
@@ -303,6 +393,34 @@ function formatArgValue(value: unknown): string {
   font-family: var(--font-mono);
   font-size: inherit;
   white-space: pre;
+}
+
+/* 代码块右上角复制按钮 */
+.markdown-body :deep(.code-copy-btn) {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.08);
+  color: #adb5bd;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: all 0.2s;
+}
+
+.markdown-body :deep(pre:hover .code-copy-btn) {
+  opacity: 1;
+}
+
+.markdown-body :deep(.code-copy-btn:hover) {
+  background: rgba(255, 255, 255, 0.15);
+  color: #e4e4e7;
 }
 
 /* 引用块 */
@@ -367,6 +485,47 @@ function formatArgValue(value: unknown): string {
 .markdown-body :deep(strong) {
   color: var(--text-primary);
   font-weight: 600;
+}
+
+/* ==================== 消息操作栏 ==================== */
+.message-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: var(--spacing-sm);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.chat-message:hover .message-actions {
+  opacity: 1;
+}
+
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.action-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.action-btn.active {
+  color: var(--accent);
+}
+
+.action-btn.active:hover {
+  color: var(--accent-hover);
 }
 
 /* ==================== 工具调用 ==================== */
@@ -465,5 +624,3 @@ function formatArgValue(value: unknown): string {
   50% { opacity: 0; }
 }
 </style>
-
-

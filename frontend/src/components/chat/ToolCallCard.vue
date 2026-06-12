@@ -57,6 +57,7 @@ const toolIcon = computed(() => {
     read_file: 'pi pi-file',
     search_code: 'pi pi-search',
     propose_patch: 'pi pi-pencil',
+    propose_file_change: 'pi pi-file-edit',
   }
   return icons[props.toolCall.toolName] || 'pi pi-wrench'
 })
