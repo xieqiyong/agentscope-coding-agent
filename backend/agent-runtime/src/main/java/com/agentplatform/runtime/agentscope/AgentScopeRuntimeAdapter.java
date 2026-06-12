@@ -7,7 +7,9 @@ import com.agentplatform.persistence.repository.PatchRepository;
 import com.agentplatform.runtime.model.AgentRunResult;
 import com.agentplatform.runtime.model.RuntimeContext;
 import com.agentplatform.runtime.model.RuntimeEventSink;
+import com.agentplatform.runtime.tool.CodingAgentWebSearchTools;
 import com.agentplatform.runtime.tool.CodingAgentWorkspaceTools;
+import com.agentplatform.sandbox.PatchApplyService;
 import com.agentplatform.sandbox.SandboxPathResolver;
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.message.AssistantMessage;
@@ -39,13 +41,17 @@ public class AgentScopeRuntimeAdapter {
     @Resource
     private PatchFileRepository patchFileRepository;
 
+    @Resource
+    private PatchApplyService patchApplyService;
+
     public AgentRunResult execute(RuntimeContext context, RuntimeEventSink sink) {
         validateModel(context);
 
         Toolkit toolkit = new Toolkit();
         CodingAgentWorkspaceTools workspaceTools =
-                new CodingAgentWorkspaceTools(context, sandboxPathResolver, patchRepository, patchFileRepository);
+                new CodingAgentWorkspaceTools(context, sandboxPathResolver, patchRepository, patchFileRepository, patchApplyService);
         toolkit.registerTool(workspaceTools);
+        toolkit.registerTool(new CodingAgentWebSearchTools());
 
         String modelBaseUrl = normalizeModelBaseUrl(context.getModelBaseUrl());
         OpenAIChatModel.Builder modelBuilder = OpenAIChatModel.builder()
@@ -136,4 +142,3 @@ public class AgentScopeRuntimeAdapter {
         return sb.toString();
     }
 }
-

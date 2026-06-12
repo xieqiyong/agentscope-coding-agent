@@ -31,6 +31,12 @@ const props = defineProps<{
 const expanded = ref(false)
 
 const toolSignature = computed(() => {
+  const editSummary = formatEditSummary(props.toolCall)
+  if (editSummary) return editSummary
+
+  const compact = compactToolSignature(props.toolCall.toolName, props.toolCall.args || {})
+  if (compact) return compact
+
   const entries = Object.entries(props.toolCall.args || {})
     .filter(([key]) => key !== '_raw')
     .map(([key, value]) => `${key}=${formatArgValue(value)}`)
@@ -54,13 +60,70 @@ const statusLabel = computed(() => {
 const toolIcon = computed(() => {
   const icons: Record<string, string> = {
     list_files: 'pi pi-folder-open',
+    LS: 'pi pi-folder-open',
     read_file: 'pi pi-file',
+    Read: 'pi pi-file',
     search_code: 'pi pi-search',
+    Grep: 'pi pi-search',
+    Glob: 'pi pi-sitemap',
+    write_file: 'pi pi-save',
+    Write: 'pi pi-save',
+    Edit: 'pi pi-pencil',
+    apply_patch: 'pi pi-code',
     propose_patch: 'pi pi-pencil',
     propose_file_change: 'pi pi-file-edit',
+    WebSearch: 'pi pi-globe',
   }
   return icons[props.toolCall.toolName] || 'pi pi-wrench'
 })
+
+function compactToolSignature(toolName: string, args: Record<string, unknown>): string {
+  if (toolName === 'write_file') {
+    const path = formatArgValue(args.path)
+    const mode = args.writeMode ? `, mode=${formatArgValue(args.writeMode)}` : ''
+    return `write_file(path=${path}${mode})`
+  }
+  if (toolName === 'Write') return `Write(file_path=${formatArgValue(args.file_path)})`
+  if (toolName === 'Edit') return `Edit(file_path=${formatArgValue(args.file_path)})`
+  if (toolName === 'Read') return `Read(file_path=${formatArgValue(args.file_path)})`
+  if (toolName === 'LS') return `LS(path=${formatArgValue(args.path)})`
+  if (toolName === 'Glob') return `Glob(pattern=${formatArgValue(args.pattern)})`
+  if (toolName === 'Grep') return `Grep(pattern=${formatArgValue(args.pattern)})`
+  if (toolName === 'WebSearch') return `WebSearch(query=${formatArgValue(args.query)})`
+  if (toolName === 'apply_patch') {
+    return 'apply_patch(unifiedDiff)'
+  }
+  if (toolName === 'propose_file_change') {
+    const path = formatArgValue(args.path)
+    const type = args.changeType ? `, changeType=${formatArgValue(args.changeType)}` : ''
+    return `propose_file_change(path=${path}${type})`
+  }
+  if (toolName === 'propose_patch') {
+    const summary = args.summary ? `summary=${formatArgValue(args.summary)}` : 'unifiedDiff'
+    return `propose_patch(${summary})`
+  }
+  return ''
+}
+
+function formatEditSummary(toolCall: ToolCallInfo): string {
+  if (!['write_file', 'apply_patch', 'Write', 'Edit'].includes(toolCall.toolName)) return ''
+  const result = toolCall.result || ''
+  const total = result.match(/总变更[:：]\s*\+(\d+)\s*\/\s*-(\d+)/)
+  const fileCount = result.match(/已编辑文件[:：]\s*(\d+)/)
+  const files = Array.from(result.matchAll(/^- (.+?) \((CREATE|MODIFY|DELETE)\): \+(\d+)\s*\/\s*-(\d+)/gm))
+
+  if (files.length === 1) {
+    const [, path, changeType, added, deleted] = files[0]
+    const action = changeType === 'CREATE' ? 'Created' : changeType === 'DELETE' ? 'Deleted' : 'Edited'
+    return `${action} ${path} (+${added} -${deleted})`
+  }
+
+  if (total) {
+    const count = fileCount?.[1] || String(files.length || 1)
+    return `Edited ${count} ${count === '1' ? 'file' : 'files'} (+${total[1]} -${total[2]})`
+  }
+  return ''
+}
 
 
 function formatArgValue(value: unknown): string {

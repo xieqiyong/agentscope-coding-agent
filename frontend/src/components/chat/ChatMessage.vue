@@ -221,6 +221,12 @@ function toggleFeedback(type: 'like' | 'dislike') {
 }
 
 function formatToolSignature(toolCall: ToolCallInfo): string {
+  const editSummary = formatEditSummary(toolCall)
+  if (editSummary) return editSummary
+
+  const compact = compactToolSignature(toolCall.toolName, toolCall.args || {})
+  if (compact) return compact
+
   const entries = Object.entries(toolCall.args || {})
     .filter(([key]) => key !== '_raw')
     .map(([key, value]) => `${key}=${formatArgValue(value)}`)
@@ -231,6 +237,54 @@ function formatToolSignature(toolCall: ToolCallInfo): string {
     return `${toolCall.toolName}(${toolCall.argsText.trim()})`
   }
   return `${toolCall.toolName}(...)`
+}
+
+function formatEditSummary(toolCall: ToolCallInfo): string {
+  if (!['write_file', 'apply_patch', 'Write', 'Edit'].includes(toolCall.toolName)) return ''
+  const result = toolCall.result || ''
+  const total = result.match(/总变更[:：]\s*\+(\d+)\s*\/\s*-(\d+)/)
+  const fileCount = result.match(/已编辑文件[:：]\s*(\d+)/)
+  const files = Array.from(result.matchAll(/^- (.+?) \((CREATE|MODIFY|DELETE)\): \+(\d+)\s*\/\s*-(\d+)/gm))
+
+  if (files.length === 1) {
+    const [, path, changeType, added, deleted] = files[0]
+    const action = changeType === 'CREATE' ? 'Created' : changeType === 'DELETE' ? 'Deleted' : 'Edited'
+    return `${action} ${path} (+${added} -${deleted})`
+  }
+
+  if (total) {
+    const count = fileCount?.[1] || String(files.length || 1)
+    return `Edited ${count} ${count === '1' ? 'file' : 'files'} (+${total[1]} -${total[2]})`
+  }
+  return ''
+}
+
+function compactToolSignature(toolName: string, args: Record<string, unknown>): string {
+  if (toolName === 'write_file') {
+    const path = formatArgValue(args.path)
+    const mode = args.writeMode ? `, mode=${formatArgValue(args.writeMode)}` : ''
+    return `write_file(path=${path}${mode})`
+  }
+  if (toolName === 'Write') return `Write(file_path=${formatArgValue(args.file_path)})`
+  if (toolName === 'Edit') return `Edit(file_path=${formatArgValue(args.file_path)})`
+  if (toolName === 'Read') return `Read(file_path=${formatArgValue(args.file_path)})`
+  if (toolName === 'LS') return `LS(path=${formatArgValue(args.path)})`
+  if (toolName === 'Glob') return `Glob(pattern=${formatArgValue(args.pattern)})`
+  if (toolName === 'Grep') return `Grep(pattern=${formatArgValue(args.pattern)})`
+  if (toolName === 'WebSearch') return `WebSearch(query=${formatArgValue(args.query)})`
+  if (toolName === 'apply_patch') {
+    return 'apply_patch(unifiedDiff)'
+  }
+  if (toolName === 'propose_file_change') {
+    const path = formatArgValue(args.path)
+    const type = args.changeType ? `, changeType=${formatArgValue(args.changeType)}` : ''
+    return `propose_file_change(path=${path}${type})`
+  }
+  if (toolName === 'propose_patch') {
+    const summary = args.summary ? `summary=${formatArgValue(args.summary)}` : 'unifiedDiff'
+    return `propose_patch(${summary})`
+  }
+  return ''
 }
 
 function formatArgValue(value: unknown): string {

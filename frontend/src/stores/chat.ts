@@ -53,13 +53,21 @@ export const useChatStore = defineStore('chat', () => {
 
   async function loadMessages(sessionId: string) {
     try {
-      const res: any = await chatApi.listMessages(sessionId)
+      const res: any = await chatApi.getTimeline(sessionId)
       const rows = Array.isArray(res.data) ? res.data : []
       messages.value = rows
         .map(normalizeBackendMessage)
         .filter((msg: ChatMessage | null): msg is ChatMessage => Boolean(msg))
     } catch {
-      messages.value = []
+      try {
+        const res: any = await chatApi.listMessages(sessionId)
+        const rows = Array.isArray(res.data) ? res.data : []
+        messages.value = rows
+          .map(normalizeBackendMessage)
+          .filter((msg: ChatMessage | null): msg is ChatMessage => Boolean(msg))
+      } catch {
+        messages.value = []
+      }
     }
   }
 
@@ -136,6 +144,8 @@ export const useChatStore = defineStore('chat', () => {
       case 'AGENT_FINISHED':
         rememberConversationFromEvent(event)
         finalizeStreamingMessage()
+        // 兜底：扫描所有 toolCall 和回答文本，检测遗漏的 patch 提案
+        detectMissedPatchConfirmations()
         isStreaming.value = false
         break
 
@@ -233,7 +243,13 @@ export const useChatStore = defineStore('chat', () => {
   function handleToolResultStarted(event: RuntimeEvent) {
     const meta = event.metadata || {}
     const callId = readString(meta.callId) || readString(meta.toolCallId) || event.eventId
+    const toolName = readString(meta.toolName) || readString(meta.tool) || event.stage || '未知工具'
     let toolCall = findToolCall(callId)
+
+    // 兜底：callId 不匹配时按工具名找
+    if (!toolCall) {
+      toolCall = findRunningToolCallByName(toolName)
+    }
     if (!toolCall) {
       const lastMsg = ensureAssistantToolMessage()
       if (!lastMsg.toolCalls) lastMsg.toolCalls = []
@@ -254,7 +270,13 @@ export const useChatStore = defineStore('chat', () => {
   function handleToolResultDelta(event: RuntimeEvent) {
     const meta = event.metadata || {}
     const callId = readString(meta.callId) || readString(meta.toolCallId)
-    const toolCall = findToolCall(callId)
+    let toolCall = findToolCall(callId)
+
+    // 兜底：如果 callId 不匹配，尝试找最近消息中正在运行的 toolCall
+    if (!toolCall) {
+      const toolName = readString(meta.toolName) || readString(meta.tool)
+      toolCall = findRunningToolCallByName(toolName)
+    }
     if (!toolCall) return
 
     toolCall.result = `${toolCall.result || ''}${event.content || ''}`
@@ -263,13 +285,24 @@ export const useChatStore = defineStore('chat', () => {
   function handleToolResultFinished(event: RuntimeEvent) {
     const meta = event.metadata || {}
     const callId = readString(meta.callId) || readString(meta.toolCallId)
-    const toolCall = findToolCall(callId)
-    if (!toolCall) return
+    let toolCall = findToolCall(callId)
+
+    // 兜底：callId 不匹配时按工具名找最近完成的 toolCall
+    if (!toolCall) {
+      const toolName = readString(meta.toolName) || readString(meta.tool)
+      toolCall = findRunningToolCallByName(toolName)
+    }
+
+    if (!toolCall) {
+      console.warn('[ChatStore] TOOL_RESULT_FINISHED: 未找到 toolCall, callId=', callId, 'event=', event)
+      return
+    }
 
     toolCall.status = 'completed'
     toolCall.durationMs = event.elapsedMs || (Date.now() - (toolCall.startedAt || Date.now()))
 
     if (isPatchProposalTool(toolCall.toolName)) {
+      console.log('[ChatStore] 检测到 patch 提案工具:', toolCall.toolName, 'result=', toolCall.result)
       void registerPatchConfirmation(toolCall)
     }
   }
@@ -297,6 +330,23 @@ export const useChatStore = defineStore('chat', () => {
       if (!msg.toolCalls) continue
       const found = msg.toolCalls.find((tc) => tc.callId === callId)
       if (found) return found
+    }
+    return null
+  }
+
+  /**
+   * 兜底查找：当 callId 不匹配时，按工具名找最近一个正在运行的 toolCall。
+   * 解决 AgentScope 不传 toolCallId 时每个事件 eventId 不同导致匹配失败的问题。
+   */
+  function findRunningToolCallByName(toolName?: string): ToolCallInfo | null {
+    if (!toolName) return null
+    for (let i = messages.value.length - 1; i >= 0; i--) {
+      const msg = messages.value[i]
+      if (!msg.toolCalls) continue
+      for (let j = msg.toolCalls.length - 1; j >= 0; j--) {
+        const tc = msg.toolCalls[j]
+        if (tc.status === 'running' && tc.toolName === toolName) return tc
+      }
     }
     return null
   }
@@ -338,7 +388,9 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function registerPatchConfirmation(toolCall: ToolCallInfo) {
-    const patchId = extractPatchId(toolCall.result || toolCall.argsText || '')
+    const resultText = toolCall.result || toolCall.argsText || ''
+    const patchId = extractPatchId(resultText)
+    console.log('[ChatStore] registerPatchConfirmation: resultText=', resultText, 'patchId=', patchId)
     if (!patchId || hasConfirmation(patchId)) return
     toolCall.patchId = patchId
 
@@ -347,6 +399,7 @@ export const useChatStore = defineStore('chat', () => {
       const res: any = await patchApi.get(patchId)
       const patch = res.data || {}
       const diff = patch.diff || patch.diffText || ''
+      console.log('[ChatStore] patch API 返回: id=', patch.id, 'diff长度=', diff.length, 'files=', patch.files)
       const confirmation: Confirmation = {
         patchId: String(patch.id || patchId),
         files: normalizePatchFiles(patch.files, diff),
@@ -355,7 +408,9 @@ export const useChatStore = defineStore('chat', () => {
         summary: patch.summary || patch.title || '智能体生成了代码修改提案',
       }
       addConfirmationMessage(confirmation)
-    } catch {
+    } catch (e) {
+      console.warn('[ChatStore] patch API 调用失败:', e)
+      // API 失败时，用工具结果中能提取的信息创建确认卡片
       const confirmation: Confirmation = {
         patchId,
         files: [],
@@ -386,8 +441,21 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function extractPatchId(text: string): string | null {
-    const matched = text.match(/(?:补丁\s*ID|patchId)\s*[:：]\s*(\d+)/i)
-    return matched?.[1] || null
+    if (!text) return null
+    // 匹配多种格式：
+    // "补丁 ID：123" / "补丁ID: 123" / "patchId: 123" / "patch_id: 123"
+    // "ID: 123" / "id=123" / "提案编号：123"
+    const patterns = [
+      /(?:补丁\s*ID|patch_?id)\s*[:：=]\s*(\d+)/i,
+      /(?:提案|patch)\s*[:：#]\s*(\d+)/i,
+      /\bID\s*[:：]\s*(\d+)/i,
+      /\bid\s*=\s*(\d+)/i,
+    ]
+    for (const pattern of patterns) {
+      const matched = text.match(pattern)
+      if (matched?.[1]) return matched[1]
+    }
+    return null
   }
 
   function normalizePatchFiles(files: unknown, diff: string): PatchFile[] {
@@ -466,6 +534,48 @@ export const useChatStore = defineStore('chat', () => {
     )
   }
 
+  /**
+   * 兜底检测：扫描本次运行中所有 toolCall 和回答文本，
+   * 如果发现有 patch 提案但还没创建确认卡片，就自动补上。
+   * 防止因 callId 不匹配或事件丢失导致确认卡片不弹出。
+   */
+  function detectMissedPatchConfirmations() {
+    for (const msg of messages.value) {
+      if (msg.role !== 'assistant' || !msg.toolCalls?.length) continue
+      for (const tc of msg.toolCalls) {
+        if (!isPatchProposalTool(tc.toolName)) continue
+        // 已经有 patchId 关联的跳过
+        if (tc.patchId && hasConfirmation(tc.patchId)) continue
+
+        // 从 toolCall.result 或 toolCall.args 中提取 patchId
+        const patchId = extractPatchId(tc.result || tc.argsText || '')
+        if (!patchId) continue
+
+        console.log('[ChatStore] 兜底检测到遗漏的 patch:', tc.toolName, 'patchId=', patchId)
+        tc.patchId = patchId
+        void registerPatchConfirmation(tc)
+      }
+    }
+
+    // 如果 toolCall 里没找到，再扫描回答文本本身
+    const lastMsg = messages.value[messages.value.length - 1]
+    if (lastMsg?.role === 'assistant' && lastMsg.content) {
+      const patchId = extractPatchId(lastMsg.content)
+      if (patchId && !hasConfirmation(patchId)) {
+        console.log('[ChatStore] 兜底从回答文本检测到 patchId=', patchId)
+        // 创建一个简单的确认卡片
+        const confirmation: Confirmation = {
+          patchId,
+          files: [],
+          diff: '',
+          riskLevel: 'MEDIUM',
+          summary: '智能体生成了代码修改提案',
+        }
+        addConfirmationMessage(confirmation)
+      }
+    }
+  }
+
   function addUserMessage(content: string) {
     messages.value.push({
       id: `user-${Date.now()}`,
@@ -516,7 +626,23 @@ export const useChatStore = defineStore('chat', () => {
       role: roleText,
       content: String(row.content || ''),
       timestamp: row.createdAt || row.updatedAt || new Date().toISOString(),
+      toolCalls: normalizeBackendToolCalls(row.toolCalls),
     }
+  }
+
+  function normalizeBackendToolCalls(value: unknown): ToolCallInfo[] | undefined {
+    if (!Array.isArray(value) || value.length === 0) return undefined
+    return value.map((item: any) => ({
+      callId: String(item.callId || item.toolCallId || `tool-${Date.now()}`),
+      toolName: String(item.toolName || item.tool || 'unknown_tool'),
+      args: readArgs(item.args),
+      argsText: typeof item.argsText === 'string' ? item.argsText : '',
+      result: typeof item.result === 'string' ? item.result : '',
+      status: item.status === 'running' || item.status === 'error' ? item.status : 'completed',
+      startedAt: typeof item.startedAt === 'number' ? item.startedAt : undefined,
+      durationMs: typeof item.durationMs === 'number' ? item.durationMs : undefined,
+      patchId: typeof item.patchId === 'string' ? item.patchId : undefined,
+    }))
   }
 
   return {
@@ -544,4 +670,3 @@ export const useChatStore = defineStore('chat', () => {
     restoreConversationId,
   }
 })
-

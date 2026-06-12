@@ -14,4 +14,7 @@ export const chatApi = {
 
   listMessages: (sessionId: string): Promise<any> =>
     api.get(`/sessions/${sessionId}/messages`),
+
+  getTimeline: (sessionId: string): Promise<any> =>
+    api.post(`/sessions/${sessionId}/timeline`),
 }

@@ -84,6 +84,25 @@ public class PatchApplyService {
         return new PatchApplyResult(patch.getId(), patch.getStatus(), appliedFiles.size(), appliedFiles);
     }
 
+    /**
+     * 直接在当前 workspace 内应用 unified diff。
+     * 中文注释：这个入口给 coding agent 的直接写文件工具使用，不创建审核提案。
+     */
+    public WorkspacePatchApplyResult applyUnifiedDiff(String workspaceRoot, String diffText) {
+        List<FilePatch> filePatches = parseUnifiedDiff(diffText);
+        if (filePatches.isEmpty()) {
+            throw new BusinessException(400, "Patch 内容为空或不是 unified diff 格式");
+        }
+
+        List<PlannedChange> plannedChanges = new ArrayList<>();
+        for (FilePatch filePatch : filePatches) {
+            plannedChanges.add(planChange(workspaceRoot, filePatch));
+        }
+
+        writeChanges(plannedChanges);
+        return toWorkspaceResult(plannedChanges);
+    }
+
     private PatchApplyResult alreadyApplied(PatchEntity patch) {
         List<PatchApplyResult.PatchAppliedFile> files = patchFileRepository.findByPatchIdOrderByIdAsc(patch.getId())
                 .stream()
@@ -94,6 +113,27 @@ public class PatchApplyService {
                         file.getNewContentHash()))
                 .toList();
         return new PatchApplyResult(patch.getId(), patch.getStatus(), files.size(), files);
+    }
+
+    private WorkspacePatchApplyResult toWorkspaceResult(List<PlannedChange> changes) {
+        List<WorkspacePatchApplyResult.AppliedFile> files = new ArrayList<>();
+        int totalAdded = 0;
+        int totalDeleted = 0;
+        for (PlannedChange change : changes) {
+            LineChangeStats stats = calculateLineChangeStats(
+                    bytesToLines(change.oldBytes()),
+                    change.newBytes() == null ? List.of() : bytesToLines(change.newBytes())
+            );
+            totalAdded += stats.addedLines();
+            totalDeleted += stats.deletedLines();
+            files.add(new WorkspacePatchApplyResult.AppliedFile(
+                    change.relativePath(),
+                    change.changeType(),
+                    stats.addedLines(),
+                    stats.deletedLines()
+            ));
+        }
+        return new WorkspacePatchApplyResult(files.size(), totalAdded, totalDeleted, files);
     }
 
     private PlannedChange planChange(String workspaceRoot, FilePatch filePatch) {
@@ -409,6 +449,32 @@ public class PatchApplyService {
         }
     }
 
+    private LineChangeStats calculateLineChangeStats(List<String> oldLines, List<String> newLines) {
+        if (oldLines.isEmpty()) {
+            return new LineChangeStats(newLines.size(), 0);
+        }
+        if (newLines.isEmpty()) {
+            return new LineChangeStats(0, oldLines.size());
+        }
+        if ((long) oldLines.size() * (long) newLines.size() > 250_000L) {
+            // 中文注释：超大文件不做昂贵 LCS，按整文件替换统计，避免工具调用卡死。
+            return new LineChangeStats(newLines.size(), oldLines.size());
+        }
+
+        int[][] lcs = new int[oldLines.size() + 1][newLines.size() + 1];
+        for (int i = oldLines.size() - 1; i >= 0; i--) {
+            for (int j = newLines.size() - 1; j >= 0; j--) {
+                if (oldLines.get(i).equals(newLines.get(j))) {
+                    lcs[i][j] = lcs[i + 1][j + 1] + 1;
+                } else {
+                    lcs[i][j] = Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+                }
+            }
+        }
+        int unchanged = lcs[0][0];
+        return new LineChangeStats(newLines.size() - unchanged, oldLines.size() - unchanged);
+    }
+
     private record FilePatch(String oldPath, String newPath, List<Hunk> hunks) {
         FilePatch withNewPath(String value) {
             return new FilePatch(oldPath, value, hunks);
@@ -443,5 +509,8 @@ public class PatchApplyService {
             String oldContentHash,
             String newContentHash
     ) {
+    }
+
+    private record LineChangeStats(int addedLines, int deletedLines) {
     }
 }
