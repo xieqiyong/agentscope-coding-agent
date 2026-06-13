@@ -11,7 +11,7 @@ import java.util.List;
 
 /**
  * 一次智能体执行期间需要的上下文快照。
- * 这里聚合的是运行所需数据，不在这里做数据库查询。
+ * 这里聚合的是运行所需数据，不在这个对象里做数据库查询。
  */
 public class RuntimeContext {
 
@@ -31,6 +31,27 @@ public class RuntimeContext {
     private int timeoutSeconds;
     private List<ConversationMessageEntity> recentMessages = new ArrayList<>();
     private List<MemoryEntryEntity> activeMemories = new ArrayList<>();
+
+    /**
+     * AgentScope 内部状态是否启用。它只影响 AgentState 恢复，不影响数据库会话展示。
+     */
+    private boolean agentScopeSessionEnabled;
+
+    /**
+     * AgentScope Session 的实现类型，例如 redis/json/memory。
+     */
+    private String agentScopeSessionType;
+
+    /**
+     * 当前运行绑定的 AgentScope sessionKey。
+     */
+    private String agentScopeSessionKey;
+
+    /**
+     * 运行前检查到的 AgentState 是否已经存在。
+     * 如果存在，本轮只需要把当前用户消息交给 AgentScope，历史上下文由 AgentScope 从 Session 恢复。
+     */
+    private boolean agentScopeStateExists;
 
     public AgentRunCommand getCommand() {
         return command;
@@ -159,5 +180,36 @@ public class RuntimeContext {
     public void setActiveMemories(List<MemoryEntryEntity> activeMemories) {
         this.activeMemories = activeMemories;
     }
-}
 
+    public boolean isAgentScopeSessionEnabled() {
+        return agentScopeSessionEnabled;
+    }
+
+    public void setAgentScopeSessionEnabled(boolean agentScopeSessionEnabled) {
+        this.agentScopeSessionEnabled = agentScopeSessionEnabled;
+    }
+
+    public String getAgentScopeSessionType() {
+        return agentScopeSessionType;
+    }
+
+    public void setAgentScopeSessionType(String agentScopeSessionType) {
+        this.agentScopeSessionType = agentScopeSessionType;
+    }
+
+    public String getAgentScopeSessionKey() {
+        return agentScopeSessionKey;
+    }
+
+    public void setAgentScopeSessionKey(String agentScopeSessionKey) {
+        this.agentScopeSessionKey = agentScopeSessionKey;
+    }
+
+    public boolean isAgentScopeStateExists() {
+        return agentScopeStateExists;
+    }
+
+    public void setAgentScopeStateExists(boolean agentScopeStateExists) {
+        this.agentScopeStateExists = agentScopeStateExists;
+    }
+}

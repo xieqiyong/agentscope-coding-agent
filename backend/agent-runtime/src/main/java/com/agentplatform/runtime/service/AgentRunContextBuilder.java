@@ -88,22 +88,30 @@ public class AgentRunContextBuilder {
     private String buildSystemPrompt(AgentEntity agent, WorkspaceEntity workspace, List<MemoryEntryEntity> memories) {
         String basePrompt = StringUtils.hasText(agent.getSystemPrompt())
                 ? agent.getSystemPrompt()
-                : "你是一个严谨的 Java 编码智能体，必须先理解项目上下文，再使用工具读取文件和提出修改方案。";
+                : "你是一个严谨的 Java 编码智能体。先判断用户请求是否依赖当前工作区；依赖项目事实时要查证据，不依赖项目事实时可以直接回答。";
 
         basePrompt = basePrompt + buildCurrentTimePrompt();
 
-        basePrompt = basePrompt + "\n\n工具使用补充：\n"
-                + "1. 当前 workspace 内的普通代码修改，优先使用 apply_patch 直接应用 unified diff。\n"
-                + "2. 新建文件、整文件替换或大文件修改时，优先使用 write_file 直接写入。\n"
-                + "3. 多文件任务必须拆成多个工具调用，不要让用户手动复制粘贴文件内容。\n"
-                + "4. propose_patch 和 propose_file_change 只保存审核提案，不会直接写入磁盘；只有用户明确要求审核、修改敏感文件或高风险变更时才使用。\n"
-                + "5. 只有 write_file 或 apply_patch 返回成功后，才能声称文件已经创建或修改完成。";
+        basePrompt = basePrompt + "\n\n工具选择策略：\n"
+                + "1. 用户问 Java 概念、面试题、通用设计、学习路线、聊天确认等不依赖当前工作区的问题时，直接回答，不要为了使用工具而调用工具。\n"
+                + "2. 用户问“这个项目、当前代码、某个文件、某个接口、为什么报错、帮我修改”等依赖工作区事实的问题时，必须先用工具获取证据。\n"
+                + "3. 用户明确说“不用读代码、直接说思路、先给方案”时，除非缺少关键信息，否则先直接回答。\n"
+                + "4. 涉及最新外部资料、版本、新闻、价格、政策时使用 WebSearch，并说明信息来自搜索结果。";
+
+        basePrompt = basePrompt + "\n\n证据充分性规则：\n"
+                + "1. 对项目代码下结论前，至少说明结论依据来自哪些已读取文件或搜索结果；如果只看了部分文件，要明确这是基于当前证据的判断。\n"
+                + "2. 修改代码前，必须读取目标文件；涉及调用链、配置、测试或前后端联动时，还要读取相关调用方、配置文件或测试文件。\n"
+                + "3. 不要只凭文件名、目录名或模型记忆判断实现细节；工具结果优先于猜测。\n"
+                + "4. 证据不足时不要强行下结论，应继续搜索/读取，或者明确告诉用户还缺哪些信息。";
 
         basePrompt = basePrompt + "\n\nClaude Code 风格工具补充：\n"
                 + "1. 探索文件优先使用 LS、Glob、Grep、Read。\n"
-                + "2. 精确小改优先使用 Edit；新建或整文件覆盖使用 Write。\n"
-                + "3. 需要最新外部资料时使用 WebSearch，并在回答里说明信息来自搜索结果。\n"
-                + "4. Bash、Notebook、子 Agent、任务编排暂未开放，不要假装已经执行这些工具。";
+                + "2. 当前 workspace 内的普通代码修改，优先使用 apply_patch 或 Edit 直接应用最小修改。\n"
+                + "3. 新建文件、整文件替换或大文件修改时，优先使用 Write 或 write_file。\n"
+                + "4. 多文件任务必须拆成多个工具调用，不要让用户手动复制粘贴文件内容。\n"
+                + "5. propose_patch 和 propose_file_change 只保存审核提案，不会直接写入磁盘；只有用户明确要求审核、修改敏感文件或高风险变更时才使用。\n"
+                + "6. 只有 Write、write_file、Edit 或 apply_patch 返回成功后，才能声称文件已经创建或修改完成。\n"
+                + "7. Bash、Notebook、子 Agent、任务编排暂未开放，不要假装已经执行这些工具。";
 
         StringBuilder memoryText = new StringBuilder();
         int count = 0;
@@ -135,9 +143,9 @@ public class AgentRunContextBuilder {
                 【长期记忆】
                 %s
                 【运行规则】
-                1. 你只能通过工具读取工作区文件，不要臆测文件内容。
+                1. 不要臆测工作区文件内容；需要项目事实时必须通过工具读取。
                 2. 所有文件路径都必须视为相对工作区路径。
-                3. 修改代码时只能提出 unified diff，不要假装已经写入文件。
+                3. 修改代码时优先做最小改动，并在回答里说明实际修改了哪些文件。
                 4. 不要读取或输出密钥、token、证书、私钥等敏感内容。
                 5. 工具结果优先于模型猜测；如果证据不足，要明确说明。
                 """.formatted(basePrompt, workspace.getName(), workspace.getRootPath(), memoryText);

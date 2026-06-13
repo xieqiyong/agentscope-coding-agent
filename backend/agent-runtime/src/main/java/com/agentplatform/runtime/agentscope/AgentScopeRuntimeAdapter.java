@@ -6,7 +6,9 @@ import com.agentplatform.persistence.repository.PatchFileRepository;
 import com.agentplatform.persistence.repository.PatchRepository;
 import com.agentplatform.runtime.model.AgentRunResult;
 import com.agentplatform.runtime.model.RuntimeContext;
+import com.agentplatform.runtime.model.RuntimeEvent;
 import com.agentplatform.runtime.model.RuntimeEventSink;
+import com.agentplatform.runtime.model.RuntimeEventType;
 import com.agentplatform.runtime.tool.CodingAgentWebSearchTools;
 import com.agentplatform.runtime.tool.CodingAgentWorkspaceTools;
 import com.agentplatform.sandbox.PatchApplyService;
@@ -23,11 +25,13 @@ import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * AgentScope 运行时适配器。
- * 这个类是智能体运行时模块中唯一直接接触 AgentScope SDK 的入口。
+ * 这个类只负责把平台上下文转换成 AgentScope 调用，平台自己的沙箱、记忆、审计仍然由外层模块控制。
  */
 @Component
 public class AgentScopeRuntimeAdapter {
@@ -44,8 +48,15 @@ public class AgentScopeRuntimeAdapter {
     @Resource
     private PatchApplyService patchApplyService;
 
+    @Resource
+    private AgentScopeSessionManager sessionManager;
+
     public AgentRunResult execute(RuntimeContext context, RuntimeEventSink sink) {
         validateModel(context);
+        long startedNanos = System.nanoTime();
+
+        AgentScopeSessionBinding sessionBinding = sessionManager.bind(context);
+        emitSessionLoaded(context, sink, sessionBinding, elapsedMs(startedNanos));
 
         Toolkit toolkit = new Toolkit();
         CodingAgentWorkspaceTools workspaceTools =
@@ -62,15 +73,21 @@ public class AgentScopeRuntimeAdapter {
             modelBuilder.apiKey(context.getApiKey());
         }
 
-        try (ReActAgent agent = ReActAgent.builder()
+        ReActAgent.Builder agentBuilder = ReActAgent.builder()
                 .name("coding-agent")
                 .description("带工作区沙箱工具的编码智能体")
                 .sysPrompt(context.getSystemPrompt())
                 .model(modelBuilder.build())
                 .toolkit(toolkit)
-                .maxIters(context.getMaxIterations())
-                .build()) {
+                .maxIters(context.getMaxIterations());
 
+        if (sessionBinding.isEnabled()) {
+            agentBuilder.session(sessionBinding.getSession())
+                    .sessionKey(sessionBinding.getSessionKey())
+                    .enablePendingToolRecovery(true);
+        }
+
+        try (ReActAgent agent = agentBuilder.build()) {
             AgentScopeTraceRecorder recorder = new AgentScopeTraceRecorder(context, sink);
             List<Msg> inputMessages = buildInputMessages(context);
             agent.streamEvents(inputMessages)
@@ -89,7 +106,7 @@ public class AgentScopeRuntimeAdapter {
             result.setStatus("COMPLETED");
             return result;
         } catch (Exception e) {
-            throw new RuntimeException("AgentScope 执行失败：" + e.getMessage(), e);
+            throw new RuntimeException("AgentScope 执行失败: " + e.getMessage(), e);
         }
     }
 
@@ -114,7 +131,12 @@ public class AgentScopeRuntimeAdapter {
         }
         return normalized;
     }
+
     private List<Msg> buildInputMessages(RuntimeContext context) {
+        if (context.isAgentScopeSessionEnabled() && context.isAgentScopeStateExists()) {
+            return currentUserMessageOnly(context);
+        }
+
         List<Msg> messages = new ArrayList<>();
         for (ConversationMessageEntity message : context.getRecentMessages()) {
             if (message == null || !StringUtils.hasText(message.getContent())) {
@@ -132,7 +154,35 @@ public class AgentScopeRuntimeAdapter {
         return messages;
     }
 
+    private List<Msg> currentUserMessageOnly(RuntimeContext context) {
+        List<Msg> messages = new ArrayList<>();
+        messages.add(new UserMessage(context.getCommand().getMessage()));
+        return messages;
+    }
+
+    private void emitSessionLoaded(RuntimeContext context, RuntimeEventSink sink,
+                                   AgentScopeSessionBinding binding, long elapsedMs) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("enabled", binding.isEnabled());
+        metadata.put("type", binding.getType());
+        metadata.put("stateExists", binding.isStateExists());
+        metadata.put("sessionKey", context.getAgentScopeSessionKey());
+        metadata.put("inputStrategy", binding.isEnabled() && binding.isStateExists()
+                ? "CURRENT_MESSAGE_ONLY"
+                : "DATABASE_HISTORY_BOOTSTRAP");
+
+        String content = binding.isEnabled()
+                ? "已绑定 AgentScope Session，内部 AgentState 将由 " + binding.getType() + " 恢复和保存"
+                : "未启用 AgentScope Session，本轮只使用数据库外部上下文";
+        sink.emit(RuntimeEvent.of(context.getRunId(), context.getTraceId(), RuntimeEventType.CONTEXT_LOADED,
+                "AgentScope 状态加载完成", content, metadata, elapsedMs));
+    }
+
     private String inputText(RuntimeContext context) {
+        if (context.isAgentScopeSessionEnabled() && context.isAgentScopeStateExists()) {
+            return "USER: " + context.getCommand().getMessage();
+        }
+
         StringBuilder sb = new StringBuilder();
         for (ConversationMessageEntity message : context.getRecentMessages()) {
             if (message != null && message.getContent() != null) {
@@ -140,5 +190,9 @@ public class AgentScopeRuntimeAdapter {
             }
         }
         return sb.toString();
+    }
+
+    private long elapsedMs(long startedNanos) {
+        return (System.nanoTime() - startedNanos) / 1_000_000;
     }
 }

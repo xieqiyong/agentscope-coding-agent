@@ -38,9 +38,19 @@ export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   timestamp: string
+  thinking?: ThinkingInfo
   toolCalls?: ToolCallInfo[]
   confirmation?: Confirmation
   isStreaming?: boolean
+}
+
+export interface ThinkingInfo {
+  status: 'thinking' | 'done'
+  content?: string
+  omitted?: boolean
+  chars?: number
+  startedAt?: number
+  durationMs?: number
 }
 
 export interface ToolCallInfo {

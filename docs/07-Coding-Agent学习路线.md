@@ -10,8 +10,8 @@
 | 2 | RAG 与记忆基础 | 已完成 | 跑通文档检索、短期记忆、摘要和长期记忆候选 |
 | 3 | 工具调用可观测 | 已完成 | 把模型输出、工具调用、工具结果通过 SSE 展示出来 |
 | 4 | 文件级沙箱 | 已完成第一轮 | 限制 workspace 内读写，拦截路径逃逸、敏感文件和 symlink |
-| 5 | SessionKey / AgentState | 下一步 | 学习 AgentScope 内部 checkpoint 和 session 状态恢复 |
-| 6 | 运行状态机 | 未开始 | 建模 RUNNING、WAITING_APPROVAL、RESUMED、FAILED 等状态 |
+| 5 | SessionKey / AgentState | 已完成第一轮 | 学习 AgentScope 内部 checkpoint 和 session 状态恢复 |
+| 6 | 运行状态机 | 下一步 | 建模 RUNNING、WAITING_APPROVAL、RESUMED、FAILED 等状态 |
 | 7 | 权限治理 | 未开始 | 给文件、命令、网络工具建立 allow / ask / deny 策略 |
 | 8 | 命令级沙箱 | 未开始 | 实现 Bash、超时、stdout/stderr 流式、后台任务和危险命令拦截 |
 | 9 | Checkpoint + Pending Action | 未开始 | 用户确认后从挂起点继续，异常后能恢复或补偿 |
@@ -106,9 +106,9 @@ Runtime 产生结构化事件
 - Bash 还没有开放。
 - 跨 workspace、敏感文件和危险操作后续进入权限治理。
 
-## 下一步：SessionKey / AgentState
+## 已完成：SessionKey / AgentState
 
-下一步学习目标：
+本阶段学习目标：
 
 ```text
 理解两种状态恢复：
@@ -258,11 +258,11 @@ Agent Loop 基础 ✅
 记忆系统第一轮 ✅
 文件工具 + 文件沙箱 ✅
 事件流 + 前端可观测 ✅
-SessionKey / AgentState ⬅ 下一步
-运行状态机
+SessionKey / AgentState ✅
+Agent 请求完整生命周期 ✅
+运行状态机 ⬅ 下一步
 权限治理
 命令沙箱
 Checkpoint 恢复
 多 Agent 编排
 ```
-

@@ -115,6 +115,26 @@ export const useChatStore = defineStore('chat', () => {
         // 等到 RUN_FINISHED / AGENT_FINISHED 再统一 finalize。
         break
 
+      case 'MODEL_CALL_STARTED':
+        handleModelThinkingStarted(event)
+        break
+
+      case 'MODEL_CALL_FINISHED':
+        handleModelThinkingFinished(event)
+        break
+
+      case 'THINKING_STARTED':
+        handleThinkingStarted(event)
+        break
+
+      case 'THINKING_DELTA':
+        handleThinkingDelta(event)
+        break
+
+      case 'THINKING_FINISHED':
+        handleThinkingFinished(event)
+        break
+
       case 'TOOL_CALL_STARTED':
         handleToolCallStarted(event)
         break
@@ -205,6 +225,87 @@ export const useChatStore = defineStore('chat', () => {
       lastMsg.id = `msg-${Date.now()}`
     }
     streamingText.value = ''
+  }
+
+  function handleModelThinkingStarted(_event: RuntimeEvent) {
+    isStreaming.value = true
+    const message = ensureAssistantRuntimeMessage()
+    if (!message.thinking || message.thinking.status === 'done') {
+      message.thinking = {
+        status: 'thinking',
+        content: '',
+        omitted: true,
+        chars: 0,
+        startedAt: Date.now(),
+        durationMs: 0,
+      }
+    }
+  }
+
+  function handleModelThinkingFinished(event: RuntimeEvent) {
+    const lastMsg = messages.value[messages.value.length - 1]
+    if (lastMsg?.role === 'assistant' && lastMsg.thinking?.status === 'thinking') {
+      handleThinkingFinished(event)
+    }
+  }
+
+  function handleThinkingStarted(event: RuntimeEvent) {
+    isStreaming.value = true
+    const message = ensureAssistantRuntimeMessage()
+    message.isStreaming = true
+    message.thinking = {
+      status: 'thinking',
+      content: '',
+      omitted: true,
+      chars: 0,
+      startedAt: Date.now(),
+      durationMs: 0,
+    }
+    if (event.content) {
+      message.thinking.content = event.content
+      message.thinking.omitted = false
+    }
+  }
+
+  function handleThinkingDelta(event: RuntimeEvent) {
+    const message = ensureAssistantRuntimeMessage()
+    const thinking = ensureThinkingInfo(message)
+    const meta = event.metadata || {}
+    const delta = event.content || ''
+    const chars = readNumber(meta.chars)
+
+    thinking.status = 'thinking'
+    thinking.omitted = meta.omitted === true
+    if (delta) {
+      thinking.content = `${thinking.content || ''}${delta}`
+      thinking.omitted = false
+    }
+    if (chars > 0) {
+      thinking.chars = (thinking.chars || 0) + chars
+    }
+  }
+
+  function handleThinkingFinished(_event: RuntimeEvent) {
+    const message = ensureAssistantRuntimeMessage()
+    const thinking = ensureThinkingInfo(message)
+    thinking.status = 'done'
+    if (thinking.startedAt) {
+      thinking.durationMs = Date.now() - thinking.startedAt
+    }
+  }
+
+  function ensureThinkingInfo(message: ChatMessage) {
+    if (!message.thinking) {
+      message.thinking = {
+        status: 'thinking',
+        content: '',
+        omitted: true,
+        chars: 0,
+        startedAt: Date.now(),
+        durationMs: 0,
+      }
+    }
+    return message.thinking
   }
 
   function handleToolCallStarted(event: RuntimeEvent) {
@@ -307,20 +408,26 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  function ensureAssistantToolMessage(): ChatMessage {
+  function ensureAssistantRuntimeMessage(): ChatMessage {
     let lastMsg = messages.value[messages.value.length - 1]
-    // 如果最后一条是 assistant 消息（同一轮运行），复用它挂载 toolCalls。
+    // 如果最后一条是 assistant 消息（同一轮运行），复用它挂载运行期状态。
     if (!lastMsg || lastMsg.role !== 'assistant' || !isStreaming.value || lastMsg.confirmation) {
       lastMsg = {
-        id: `tool-${Date.now()}`,
+        id: `runtime-${Date.now()}`,
         sessionId: currentSession.value?.id || '',
         role: 'assistant',
         content: '',
         timestamp: new Date().toISOString(),
-        toolCalls: [],
+        isStreaming: true,
       }
       messages.value.push(lastMsg)
     }
+    return lastMsg
+  }
+
+  function ensureAssistantToolMessage(): ChatMessage {
+    const lastMsg = ensureAssistantRuntimeMessage()
+    if (!lastMsg.toolCalls) lastMsg.toolCalls = []
     return lastMsg
   }
 
@@ -353,6 +460,10 @@ export const useChatStore = defineStore('chat', () => {
 
   function readString(value: unknown): string {
     return typeof value === 'string' ? value : ''
+  }
+
+  function readNumber(value: unknown): number {
+    return typeof value === 'number' && Number.isFinite(value) ? value : 0
   }
 
   function readArgs(value: unknown): Record<string, unknown> {

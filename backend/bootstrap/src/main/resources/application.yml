@@ -28,6 +28,17 @@ spring:
 server:
   port: 8081
 
+agent:
+  runtime:
+    session:
+      # AgentScope 内部 AgentState 存储。数据库仍然保存页面会话、消息和事件审计。
+      enabled: true
+      type: redis
+      redis:
+        uri: redis://180.76.225.232:6379/0
+      json:
+        path: data/agentscope-sessions
+
 logging:
   level:
     com.agentplatform: DEBUG

@@ -10,6 +10,20 @@
 
     <!-- 消息内容 -->
     <div class="message-body">
+      <!-- 思考过程：默认展示状态，不展开完整推理链 -->
+      <div v-if="message.role === 'assistant' && thinking" class="thinking-trace">
+        <button class="thinking-toggle" type="button" @click="thinkingExpanded = !thinkingExpanded">
+          <i :class="['pi', thinking.status === 'thinking' ? 'pi-spin pi-spinner' : 'pi-check-circle']"></i>
+          <span class="thinking-title">{{ thinkingTitle }}</span>
+          <span v-if="thinkingMeta" class="thinking-meta">{{ thinkingMeta }}</span>
+          <i :class="['pi', thinkingExpanded ? 'pi-chevron-down' : 'pi-chevron-right', 'thinking-chevron']"></i>
+        </button>
+        <div v-if="thinkingExpanded" class="thinking-content">
+          <template v-if="thinkingContent">{{ thinkingContent }}</template>
+          <template v-else>{{ thinkingPlaceholder }}</template>
+        </div>
+      </div>
+
       <!-- 工具调用轨迹 -->
       <div v-if="message.role === 'assistant' && toolCalls.length" class="tool-trace">
         <button class="tool-trace-toggle" type="button" @click="toolsExpanded = !toolsExpanded">
@@ -99,6 +113,7 @@ defineEmits<{
 }>()
 
 const toolsExpanded = ref(false)
+const thinkingExpanded = ref(false)
 const copied = ref(false)
 const feedback = ref<'like' | 'dislike' | null>(null)
 let copyTimer: ReturnType<typeof setTimeout> | null = null
@@ -130,8 +145,35 @@ const marked = new Marked(
 
 const toolCalls = computed(() => props.message.toolCalls || [])
 const compactToolCalls = computed(() => toolCalls.value.slice(0, 3))
+const thinking = computed(() => props.message.thinking)
 const hasAssistantContent = computed(() => Boolean((props.message.content || '').trim()))
 const hasContent = computed(() => Boolean((props.message.content || '').trim()))
+
+const thinkingTitle = computed(() => {
+  if (!thinking.value) return ''
+  return thinking.value.status === 'thinking' ? '正在思考' : '已完成思考'
+})
+
+const thinkingMeta = computed(() => {
+  if (!thinking.value) return ''
+  if (thinking.value.status === 'thinking') return '分析中'
+  if (thinking.value.durationMs && thinking.value.durationMs > 0) {
+    return `${Math.max(1, Math.round(thinking.value.durationMs / 1000))} 秒`
+  }
+  if (thinking.value.chars && thinking.value.chars > 0) {
+    return `${thinking.value.chars} chars`
+  }
+  return ''
+})
+
+const thinkingContent = computed(() => (thinking.value?.content || '').trim())
+
+const thinkingPlaceholder = computed(() => {
+  if (thinking.value?.omitted) {
+    return '模型正在分析上下文、工具结果和下一步动作。'
+  }
+  return '正在整理下一步。'
+})
 
 const toolTraceState = computed(() => {
   if (toolCalls.value.some((tc) => tc.status === 'running')) return 'running'
@@ -583,6 +625,59 @@ function formatArgValue(value: unknown): string {
 }
 
 /* ==================== 工具调用 ==================== */
+.thinking-trace {
+  width: min(100%, 760px);
+  margin-bottom: var(--spacing-sm);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg-hover) 76%, transparent);
+  overflow: hidden;
+}
+
+.thinking-toggle {
+  width: 100%;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 6px var(--spacing-md);
+  cursor: pointer;
+  text-align: left;
+}
+
+.thinking-toggle:hover {
+  background: var(--bg-hover);
+}
+
+.thinking-title {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.thinking-meta {
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.thinking-chevron {
+  margin-left: auto;
+  font-size: 0.62rem;
+  color: var(--text-muted);
+}
+
+.thinking-content {
+  padding: 0 var(--spacing-md) var(--spacing-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
 .tool-trace {
   width: min(100%, 760px);
   margin-bottom: var(--spacing-sm);
