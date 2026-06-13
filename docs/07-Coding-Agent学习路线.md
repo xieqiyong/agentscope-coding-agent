@@ -12,7 +12,7 @@
 | 4 | 文件级沙箱 | 已完成第一轮 | 限制 workspace 内读写，拦截路径逃逸、敏感文件和 symlink |
 | 5 | SessionKey / AgentState | 已完成第一轮 | 学习 AgentScope 内部 checkpoint 和 session 状态恢复 |
 | 6 | 运行状态机 | 已完成第一轮 | 建模 RUNNING、WAITING_APPROVAL、COMPLETED、FAILED、TIMEOUT、CANCELLED 等状态 |
-| 7 | 记忆系统产品化 | 下一步 | 做 Coding Agent 长期记忆、审核、冲突和注入治理 |
+| 7 | 记忆系统产品化 | 进行中 | 已完成 ACTIVE 注入组装和规则候选捕获，后续补审核接口和前端管理 |
 | 8 | 权限治理 | 未开始 | 给文件、命令、网络工具建立 allow / ask / deny 策略 |
 | 9 | 命令级沙箱 | 未开始 | 实现 Bash、超时、stdout/stderr 流式、后台任务和危险命令拦截 |
 | 10 | Checkpoint + Pending Action | 未开始 | 用户确认后从挂起点继续，异常后能恢复或补偿 |
@@ -188,12 +188,28 @@ docs/11-运行状态机实现记录.md
 
 ### 7. 记忆系统产品化
 
-下一步要学习和实现：
+进行中，已完成：
+
+- ACTIVE 长期记忆统一注入组装。
+- 记忆注入数量和字符预算控制。
+- 运行结束后规则捕获长期记忆。
+- 明确“记住”的低风险记忆自动 ACTIVE。
+- 普通“以后/后续/每次”类记忆进入 PENDING 候选。
+- 同 key 已有 ACTIVE 且内容不同的新记忆进入 CONFLICT。
+
+后续要学习和实现：
 
 - Coding Agent 长期记忆。
-- 记忆候选、审核和冲突处理。
+- 记忆候选审核接口。
+- 前端 Active / Pending / Conflict 管理页。
 - 项目约束记忆如何影响 system prompt。
 - 记忆如何和沙箱治理联动。
+
+详见：
+
+```text
+docs/12-长期记忆产品化实现记录.md
+```
 
 ### 8. 权限治理
 
@@ -277,7 +293,7 @@ Agent Loop 基础 ✅
 SessionKey / AgentState ✅
 Agent 请求完整生命周期 ✅
 运行状态机 ✅
-记忆系统产品化 ⬅ 下一步
+记忆系统产品化 ⬅ 进行中
 权限治理
 命令沙箱
 Checkpoint 恢复

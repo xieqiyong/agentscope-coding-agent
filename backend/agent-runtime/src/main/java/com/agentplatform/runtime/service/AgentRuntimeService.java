@@ -1,6 +1,8 @@
 package com.agentplatform.runtime.service;
 
 import com.agentplatform.common.exception.BusinessException;
+import com.agentplatform.memory.model.MemoryCaptureResult;
+import com.agentplatform.memory.service.MemoryCaptureService;
 import com.agentplatform.persistence.entity.AgentRunEntity;
 import com.agentplatform.persistence.entity.ConversationEntity;
 import com.agentplatform.persistence.entity.ConversationMessageEntity;
@@ -15,6 +17,8 @@ import com.agentplatform.runtime.model.RuntimeEvent;
 import com.agentplatform.runtime.model.RuntimeEventSink;
 import com.agentplatform.runtime.model.RuntimeEventType;
 import jakarta.annotation.Resource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -28,6 +32,8 @@ import java.util.concurrent.TimeoutException;
  */
 @Service
 public class AgentRuntimeService {
+
+    private static final Logger log = LoggerFactory.getLogger(AgentRuntimeService.class);
 
     @Resource
     private ConversationRepository conversationRepository;
@@ -46,6 +52,9 @@ public class AgentRuntimeService {
 
     @Resource
     private AgentRunLifecycleService lifecycleService;
+
+    @Resource
+    private MemoryCaptureService memoryCaptureService;
 
     public AgentRunResult executeStreaming(AgentRunCommand command, RuntimeEventSink clientSink) {
         validateCommand(command);
@@ -82,6 +91,7 @@ public class AgentRuntimeService {
 
             AgentRunResult result = agentScopeRuntimeAdapter.execute(context, persistedSink);
             saveAssistantMessage(conversation.getId(), result.getAnswer());
+            MemoryCaptureResult memoryCaptureResult = captureMemory(command, conversation.getId(), userMessage.getId(), result.getAnswer());
             lifecycleService.completeRun(run.getId(), result);
             emit(persistedSink, run.getId(), traceId, RuntimeEventType.RUN_FINISHED, "运行完成",
                     "智能体运行已完成", Map.of(
@@ -89,6 +99,10 @@ public class AgentRuntimeService {
                             "inputTokens", result.getInputTokens(),
                             "outputTokens", result.getOutputTokens(),
                             "modelCallCount", result.getModelCallCount(),
+                            "memoryCaptured", memoryCaptureResult.captured(),
+                            "memoryActivated", memoryCaptureResult.activated(),
+                            "memoryPending", memoryCaptureResult.pending(),
+                            "memoryConflicts", memoryCaptureResult.conflicts(),
                             "conversationId", conversation.getId()
                     ), elapsedMs(started));
             result.setStatus("COMPLETED");
@@ -162,6 +176,26 @@ public class AgentRuntimeService {
         sink.emit(RuntimeEvent.of(runId, traceId, type, stage, content, metadata, elapsedMs));
     }
 
+    private MemoryCaptureResult captureMemory(AgentRunCommand command, Long conversationId,
+                                              Long userMessageId, String answer) {
+        try {
+            return memoryCaptureService.captureAfterRun(
+                    command.getWorkspaceId(),
+                    command.getAgentId(),
+                    command.getUserId(),
+                    conversationId,
+                    userMessageId,
+                    command.getMessage(),
+                    answer
+            );
+        } catch (Exception e) {
+            // 中文注释：记忆捕获是旁路能力，失败不能影响本轮 Agent 正常回答和 run 收口。
+            log.warn("长期记忆捕获失败，已跳过，conversationId={}，userMessageId={}，原因={}",
+                    conversationId, userMessageId, e.getMessage(), e);
+            return MemoryCaptureResult.empty();
+        }
+    }
+
     private RuntimeEventSink wrapLifecycleSink(Long runId, String traceId, RuntimeEventSink clientSink, long startedNanos) {
         return event -> {
             traceService.recordAndForward(event, clientSink);
@@ -226,4 +260,3 @@ public class AgentRuntimeService {
         return value == null ? "" : value;
     }
 }
-

@@ -1,6 +1,7 @@
 package com.agentplatform.runtime.service;
 
 import com.agentplatform.common.exception.BusinessException;
+import com.agentplatform.memory.service.MemoryContextAssembler;
 import com.agentplatform.persistence.entity.AgentEntity;
 import com.agentplatform.persistence.entity.ConversationMessageEntity;
 import com.agentplatform.persistence.entity.MemoryEntryEntity;
@@ -8,7 +9,6 @@ import com.agentplatform.persistence.entity.ModelConfigEntity;
 import com.agentplatform.persistence.entity.WorkspaceEntity;
 import com.agentplatform.persistence.repository.AgentRepository;
 import com.agentplatform.persistence.repository.ConversationMessageRepository;
-import com.agentplatform.persistence.repository.MemoryEntryRepository;
 import com.agentplatform.persistence.repository.ModelConfigRepository;
 import com.agentplatform.persistence.repository.WorkspaceRepository;
 import com.agentplatform.runtime.model.AgentRunCommand;
@@ -42,7 +42,7 @@ public class AgentRunContextBuilder {
     private ConversationMessageRepository conversationMessageRepository;
 
     @Resource
-    private MemoryEntryRepository memoryEntryRepository;
+    private MemoryContextAssembler memoryContextAssembler;
 
     public RuntimeContext build(AgentRunCommand command, Long conversationId, Long userMessageId,
                                 Long runId, String traceId) {
@@ -57,9 +57,7 @@ public class AgentRunContextBuilder {
         }
 
         String userId = StringUtils.hasText(command.getUserId()) ? command.getUserId() : "default";
-        List<MemoryEntryEntity> activeMemories =
-                memoryEntryRepository.findByWorkspaceIdAndUserIdAndStatusOrderByUpdatedAtDesc(
-                        workspace.getId(), userId, "ACTIVE");
+        List<MemoryEntryEntity> activeMemories = memoryContextAssembler.loadActiveMemories(workspace.getId(), userId);
 
         List<ConversationMessageEntity> recentMessages =
                 conversationMessageRepository.findByConversationIdOrderByCreatedAtAsc(conversationId);
@@ -88,12 +86,12 @@ public class AgentRunContextBuilder {
     private String buildSystemPrompt(AgentEntity agent, WorkspaceEntity workspace, List<MemoryEntryEntity> memories) {
         String basePrompt = StringUtils.hasText(agent.getSystemPrompt())
                 ? agent.getSystemPrompt()
-                : "你是一个严谨的 Java 编码智能体。先判断用户请求是否依赖当前工作区；依赖项目事实时要查证据，不依赖项目事实时可以直接回答。";
+                : "你是一个严谨的通用编码智能体。先判断用户请求是否依赖当前工作区；依赖项目事实时要查证据，不依赖项目事实时可以直接回答。";
 
         basePrompt = basePrompt + buildCurrentTimePrompt();
 
         basePrompt = basePrompt + "\n\n工具选择策略：\n"
-                + "1. 用户问 Java 概念、面试题、通用设计、学习路线、聊天确认等不依赖当前工作区的问题时，直接回答，不要为了使用工具而调用工具。\n"
+                + "1. 用户问编程概念、面试题、通用设计、学习路线、聊天确认等不依赖当前工作区的问题时，直接回答，不要为了使用工具而调用工具。\n"
                 + "2. 用户问“这个项目、当前代码、某个文件、某个接口、为什么报错、帮我修改”等依赖工作区事实的问题时，必须先用工具获取证据。\n"
                 + "3. 用户明确说“不用读代码、直接说思路、先给方案”时，除非缺少关键信息，否则先直接回答。\n"
                 + "4. 涉及最新外部资料、版本、新闻、价格、政策时使用 WebSearch，并说明信息来自搜索结果。";
@@ -113,25 +111,7 @@ public class AgentRunContextBuilder {
                 + "6. 只有 Write、write_file、Edit 或 apply_patch 返回成功后，才能声称文件已经创建或修改完成。\n"
                 + "7. Bash、Notebook、子 Agent、任务编排暂未开放，不要假装已经执行这些工具。";
 
-        StringBuilder memoryText = new StringBuilder();
-        int count = 0;
-        for (MemoryEntryEntity memory : memories) {
-            if (count >= 12) {
-                break;
-            }
-            if (!StringUtils.hasText(memory.getContent())) {
-                continue;
-            }
-            memoryText.append("- [")
-                    .append(memory.getMemoryType())
-                    .append("] ")
-                    .append(memory.getContent())
-                    .append("\n");
-            count++;
-        }
-        if (memoryText.isEmpty()) {
-            memoryText.append("- 暂无可注入的长期记忆。\n");
-        }
+        String memoryText = memoryContextAssembler.assemblePromptSection(memories);
 
         return """
                 %s
