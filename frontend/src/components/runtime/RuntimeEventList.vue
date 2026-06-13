@@ -33,6 +33,7 @@ function getEventIcon(type: RuntimeEventType): string {
     TOOL_CALL_STARTED: 'pi pi-wrench',
     TOOL_CALL_FINISHED: 'pi pi-wrench',
     TOOL_RESULT_FINISHED: 'pi pi-check-circle',
+    RUN_STATUS_CHANGED: 'pi pi-sync',
     RUNTIME_WARNING: 'pi pi-exclamation-triangle',
     CONFIRMATION_REQUIRED: 'pi pi-question-circle',
     RUN_ERROR: 'pi pi-times-circle',

@@ -4,7 +4,7 @@ import com.agentplatform.common.exception.BusinessException;
 import com.agentplatform.persistence.entity.AgentRunEntity;
 import com.agentplatform.persistence.entity.ConversationEntity;
 import com.agentplatform.persistence.entity.ConversationMessageEntity;
-import com.agentplatform.persistence.repository.AgentRunRepository;
+import com.agentplatform.persistence.enums.AgentRunStatus;
 import com.agentplatform.persistence.repository.ConversationMessageRepository;
 import com.agentplatform.persistence.repository.ConversationRepository;
 import com.agentplatform.runtime.agentscope.AgentScopeRuntimeAdapter;
@@ -18,9 +18,9 @@ import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeoutException;
 
 /**
  * 智能体运行时总入口。
@@ -36,9 +36,6 @@ public class AgentRuntimeService {
     private ConversationMessageRepository conversationMessageRepository;
 
     @Resource
-    private AgentRunRepository agentRunRepository;
-
-    @Resource
     private AgentRunContextBuilder contextBuilder;
 
     @Resource
@@ -46,6 +43,9 @@ public class AgentRuntimeService {
 
     @Resource
     private AgentScopeRuntimeAdapter agentScopeRuntimeAdapter;
+
+    @Resource
+    private AgentRunLifecycleService lifecycleService;
 
     public AgentRunResult executeStreaming(AgentRunCommand command, RuntimeEventSink clientSink) {
         validateCommand(command);
@@ -60,11 +60,14 @@ public class AgentRuntimeService {
         }
 
         ConversationMessageEntity userMessage = saveUserMessage(conversation.getId(), command.getMessage());
-        AgentRunEntity run = startRun(command, conversation.getId(), userMessage.getId(), traceId);
+        AgentRunEntity run = lifecycleService.startRun(command, conversation.getId(), userMessage.getId(), traceId);
 
-        RuntimeEventSink persistedSink = event -> traceService.recordAndForward(event, clientSink);
+        RuntimeEventSink persistedSink = wrapLifecycleSink(run.getId(), traceId, clientSink, started);
         emit(persistedSink, run.getId(), traceId, RuntimeEventType.RUN_STARTED, "运行开始",
-                "智能体运行已开始", Map.of("conversationId", conversation.getId()), elapsedMs(started));
+                "智能体运行已开始", Map.of(
+                        "conversationId", conversation.getId(),
+                        "status", AgentRunStatus.RUNNING.name()
+                ), elapsedMs(started));
 
         try {
             RuntimeContext context = contextBuilder.build(command, conversation.getId(), userMessage.getId(), run.getId(), traceId);
@@ -79,9 +82,10 @@ public class AgentRuntimeService {
 
             AgentRunResult result = agentScopeRuntimeAdapter.execute(context, persistedSink);
             saveAssistantMessage(conversation.getId(), result.getAnswer());
-            finishRun(run, "COMPLETED", result, null);
+            lifecycleService.completeRun(run.getId(), result);
             emit(persistedSink, run.getId(), traceId, RuntimeEventType.RUN_FINISHED, "运行完成",
                     "智能体运行已完成", Map.of(
+                            "status", AgentRunStatus.COMPLETED.name(),
                             "inputTokens", result.getInputTokens(),
                             "outputTokens", result.getOutputTokens(),
                             "modelCallCount", result.getModelCallCount(),
@@ -90,9 +94,14 @@ public class AgentRuntimeService {
             result.setStatus("COMPLETED");
             return result;
         } catch (Exception e) {
-            finishRun(run, "FAILED", null, e.getMessage());
+            AgentRunStatus errorStatus = isTimeout(e) ? AgentRunStatus.TIMEOUT : AgentRunStatus.FAILED;
+            if (errorStatus == AgentRunStatus.TIMEOUT) {
+                lifecycleService.timeoutRun(run.getId(), e.getMessage());
+            } else {
+                lifecycleService.failRun(run.getId(), e.getMessage());
+            }
             emit(persistedSink, run.getId(), traceId, RuntimeEventType.RUN_ERROR, "运行异常",
-                    e.getMessage(), Map.of(), elapsedMs(started));
+                    e.getMessage(), Map.of("status", errorStatus.name()), elapsedMs(started));
             throw e;
         }
     }
@@ -148,34 +157,53 @@ public class AgentRuntimeService {
         conversationMessageRepository.save(entity);
     }
 
-    private AgentRunEntity startRun(AgentRunCommand command, Long conversationId, Long userMessageId, String traceId) {
-        AgentRunEntity run = new AgentRunEntity();
-        run.setTraceId(traceId);
-        run.setConversationId(conversationId);
-        run.setAgentId(command.getAgentId());
-        run.setWorkspaceId(command.getWorkspaceId());
-        run.setUserMessageId(userMessageId);
-        run.setStatus("RUNNING");
-        run.setInputTokens(0);
-        run.setOutputTokens(0);
-        run.setStartedAt(LocalDateTime.now());
-        return agentRunRepository.save(run);
-    }
-
-    private void finishRun(AgentRunEntity run, String status, AgentRunResult result, String errorMessage) {
-        run.setStatus(status);
-        run.setFinishedAt(LocalDateTime.now());
-        run.setErrorMessage(errorMessage);
-        if (result != null) {
-            run.setInputTokens(result.getInputTokens());
-            run.setOutputTokens(result.getOutputTokens());
-        }
-        agentRunRepository.save(run);
-    }
-
     private void emit(RuntimeEventSink sink, Long runId, String traceId, RuntimeEventType type, String stage,
                       String content, Map<String, Object> metadata, long elapsedMs) {
         sink.emit(RuntimeEvent.of(runId, traceId, type, stage, content, metadata, elapsedMs));
+    }
+
+    private RuntimeEventSink wrapLifecycleSink(Long runId, String traceId, RuntimeEventSink clientSink, long startedNanos) {
+        return event -> {
+            traceService.recordAndForward(event, clientSink);
+            handleLifecycleEvent(runId, traceId, event, clientSink, startedNanos);
+        };
+    }
+
+    private void handleLifecycleEvent(Long runId, String traceId, RuntimeEvent event,
+                                      RuntimeEventSink clientSink, long startedNanos) {
+        if (event == null || event.getType() == null) {
+            return;
+        }
+        if (event.getType() == RuntimeEventType.CONFIRMATION_REQUIRED) {
+            AgentRunEntity updated = lifecycleService.waitForApproval(runId);
+            if (AgentRunStatus.WAITING_APPROVAL.name().equals(updated.getStatus())) {
+                traceService.recordAndForward(RuntimeEvent.of(runId, traceId, RuntimeEventType.RUN_STATUS_CHANGED,
+                        "状态变更：等待用户确认", "Agent Run 已暂停，等待用户确认后才能继续",
+                        Map.of("status", AgentRunStatus.WAITING_APPROVAL.name()), elapsedMs(startedNanos)), clientSink);
+            }
+        } else if (event.getType() == RuntimeEventType.CONFIRMATION_RESULT) {
+            AgentRunEntity updated = lifecycleService.resumeFromApproval(runId);
+            if (AgentRunStatus.RUNNING.name().equals(updated.getStatus())) {
+                traceService.recordAndForward(RuntimeEvent.of(runId, traceId, RuntimeEventType.RUN_STATUS_CHANGED,
+                        "状态变更：继续运行", "用户确认结果已返回，Agent Run 继续执行",
+                        Map.of("status", AgentRunStatus.RUNNING.name()), elapsedMs(startedNanos)), clientSink);
+            }
+        }
+    }
+
+    private boolean isTimeout(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof TimeoutException) {
+                return true;
+            }
+            String message = current.getMessage();
+            if (message != null && message.toLowerCase().contains("timeout")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private String defaultTitle(String message) {
@@ -198,6 +226,4 @@ public class AgentRuntimeService {
         return value == null ? "" : value;
     }
 }
-
-
 

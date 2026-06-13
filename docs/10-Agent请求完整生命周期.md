@@ -69,6 +69,7 @@ ANSWER_DELTA
 TOOL_CALL_STARTED
 TOOL_CALL_ARGS_DELTA
 TOOL_RESULT_DELTA
+RUN_STATUS_CHANGED
 RUN_FINISHED
 RUN_ERROR
 ```
@@ -782,6 +783,15 @@ output_tokens
 finished_at
 ```
 
+这里的状态修改不再直接散落调用 `setStatus`，而是统一经过运行生命周期服务。
+
+状态机负责保证：
+
+```text
+RUNNING / WAITING_APPROVAL 才能进入终态
+COMPLETED / FAILED / TIMEOUT / CANCELLED 进入后不能再被晚到事件覆盖
+```
+
 ### 11. 推送 RUN_FINISHED
 
 发出事件：
@@ -808,6 +818,13 @@ conversationId
 ```text
 agent_runs.status=FAILED
 agent_runs.error_message=异常信息
+```
+
+如果异常链路识别为超时：
+
+```text
+agent_runs.status=TIMEOUT
+agent_runs.error_message=超时异常信息
 ```
 
 然后发出：
@@ -995,6 +1012,7 @@ message
 run
 event
 Redis checkpoint
+RUNNING / WAITING_APPROVAL / COMPLETED / FAILED / TIMEOUT / CANCELLED 基础状态机
 timeline 恢复
 patch 方案
 基础 approval 表
@@ -1006,7 +1024,7 @@ patch 方案
 租户 tenant_id
 tool_calls 物化写入
 approval 后恢复执行
-WAITING_APPROVAL 状态流转
+approval_requests 和 WAITING_APPROVAL 的强绑定
 Redis TTL 和清理
 summary 压缩治理
 多实例并发 sessionKey 锁

@@ -138,6 +138,16 @@ export function useSse() {
       case 'RUNTIME_WARNING':
         runtimeStore.recordWarning(event.content || '警告')
         break
+      case 'RUN_STATUS_CHANGED':
+        runtimeStore.addEvent({
+          id: event.eventId,
+          type,
+          timestamp: Date.now(),
+          label: event.stage || '运行状态变更',
+          detail: event.content || undefined,
+          severity: 'info',
+        })
+        break
       case 'RUN_ERROR':
         runtimeStore.addEvent({
           id: event.eventId,

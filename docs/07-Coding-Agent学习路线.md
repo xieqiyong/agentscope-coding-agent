@@ -11,13 +11,14 @@
 | 3 | 工具调用可观测 | 已完成 | 把模型输出、工具调用、工具结果通过 SSE 展示出来 |
 | 4 | 文件级沙箱 | 已完成第一轮 | 限制 workspace 内读写，拦截路径逃逸、敏感文件和 symlink |
 | 5 | SessionKey / AgentState | 已完成第一轮 | 学习 AgentScope 内部 checkpoint 和 session 状态恢复 |
-| 6 | 运行状态机 | 下一步 | 建模 RUNNING、WAITING_APPROVAL、RESUMED、FAILED 等状态 |
-| 7 | 权限治理 | 未开始 | 给文件、命令、网络工具建立 allow / ask / deny 策略 |
-| 8 | 命令级沙箱 | 未开始 | 实现 Bash、超时、stdout/stderr 流式、后台任务和危险命令拦截 |
-| 9 | Checkpoint + Pending Action | 未开始 | 用户确认后从挂起点继续，异常后能恢复或补偿 |
-| 10 | 回滚和补偿 | 未开始 | 文件快照、多文件事务、run 失败后的恢复策略 |
-| 11 | 多 Agent / 计划型 Agent | 未开始 | 学习 Plan、Observe、Execute、Review 等 Agent 形态 |
-| 12 | 产品化治理 | 未开始 | 审计、限流、fallback、workspace 管理和前端体验打磨 |
+| 6 | 运行状态机 | 已完成第一轮 | 建模 RUNNING、WAITING_APPROVAL、COMPLETED、FAILED、TIMEOUT、CANCELLED 等状态 |
+| 7 | 记忆系统产品化 | 下一步 | 做 Coding Agent 长期记忆、审核、冲突和注入治理 |
+| 8 | 权限治理 | 未开始 | 给文件、命令、网络工具建立 allow / ask / deny 策略 |
+| 9 | 命令级沙箱 | 未开始 | 实现 Bash、超时、stdout/stderr 流式、后台任务和危险命令拦截 |
+| 10 | Checkpoint + Pending Action | 未开始 | 用户确认后从挂起点继续，异常后能恢复或补偿 |
+| 11 | 回滚和补偿 | 未开始 | 文件快照、多文件事务、run 失败后的恢复策略 |
+| 12 | 多 Agent / 计划型 Agent | 未开始 | 学习 Plan、Observe、Execute、Review 等 Agent 形态 |
+| 13 | 产品化治理 | 未开始 | 审计、限流、fallback、workspace 管理和前端体验打磨 |
 
 ## 已完成内容
 
@@ -163,23 +164,38 @@ AgentScope 通过：
 
 ### 6. 运行状态机
 
-要学习和实现：
+已完成第一轮：
 
 - `RUNNING`
-- `WAITING_USER`
 - `WAITING_APPROVAL`
-- `RESUMED`
-- `FAILED`
 - `COMPLETED`
+- `FAILED`
+- `TIMEOUT`
+- `CANCELLED`
 
 重点问题：
 
 ```text
-Agent 中断时，到底停在哪一步？
-下一次恢复时，从哪里继续？
+状态机判断“现在允不允许继续、暂停、失败、超时、取消”。
+checkpoint 判断“如果允许继续，要从哪里恢复现场”。
 ```
 
-### 7. 权限治理
+详见：
+
+```text
+docs/11-运行状态机实现记录.md
+```
+
+### 7. 记忆系统产品化
+
+下一步要学习和实现：
+
+- Coding Agent 长期记忆。
+- 记忆候选、审核和冲突处理。
+- 项目约束记忆如何影响 system prompt。
+- 记忆如何和沙箱治理联动。
+
+### 8. 权限治理
 
 要学习和实现：
 
@@ -197,7 +213,7 @@ ask: 请求用户确认
 deny: 直接拒绝
 ```
 
-### 8. 命令级沙箱
+### 9. 命令级沙箱
 
 要学习和实现：
 
@@ -209,7 +225,7 @@ deny: 直接拒绝
 - 工作目录限制。
 - 环境变量控制。
 
-### 9. Checkpoint + Pending Action
+### 10. Checkpoint + Pending Action
 
 要学习和实现：
 
@@ -218,7 +234,7 @@ deny: 直接拒绝
 - 模型网关断线后恢复。
 - pending tool recovery 如何接入。
 
-### 10. 回滚和补偿
+### 11. 回滚和补偿
 
 要学习和实现：
 
@@ -227,7 +243,7 @@ deny: 直接拒绝
 - run 失败后的补偿策略。
 - git / worktree 级隔离。
 
-### 11. 多 Agent / 计划型 Agent
+### 12. 多 Agent / 计划型 Agent
 
 要学习和实现：
 
@@ -238,7 +254,7 @@ deny: 直接拒绝
 - 子 Agent 隔离上下文。
 - 任务拆解和结果合并。
 
-### 12. 产品化治理
+### 13. 产品化治理
 
 要学习和实现：
 
@@ -260,7 +276,8 @@ Agent Loop 基础 ✅
 事件流 + 前端可观测 ✅
 SessionKey / AgentState ✅
 Agent 请求完整生命周期 ✅
-运行状态机 ⬅ 下一步
+运行状态机 ✅
+记忆系统产品化 ⬅ 下一步
 权限治理
 命令沙箱
 Checkpoint 恢复
