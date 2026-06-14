@@ -35,7 +35,7 @@ agent:
       enabled: true
       type: redis
       redis:
-        uri: redis://180.76.225.232:6379/0
+        uri: redis://Xqy2018101992@180.76.225.232:6379/0
       json:
         path: data/agentscope-sessions
 

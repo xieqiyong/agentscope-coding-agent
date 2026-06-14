@@ -58,7 +58,7 @@ const showCreateDialog = ref(false)
 const tabs: { label: string; value: MemoryStatus | 'ALL' }[] = [
   { label: '全部', value: 'ALL' },
   { label: '已生效', value: 'ACTIVE' },
-  { label: '待审核', value: 'CANDIDATE' },
+  { label: '待审核', value: 'PENDING' },
   { label: '冲突', value: 'CONFLICT' },
 ]
 

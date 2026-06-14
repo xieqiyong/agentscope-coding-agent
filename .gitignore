@@ -19,3 +19,4 @@ scripts/.xjar-sb3/
 scripts/xjar4springboot3-master.tar.gz
 frontend/dist
 frontend/node_modules
+application.yml

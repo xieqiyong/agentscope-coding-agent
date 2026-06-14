@@ -36,7 +36,7 @@ public class MemoryContextAssembler {
     public String assemblePromptSection(List<MemoryEntryEntity> memories) {
         List<MemoryEntryEntity> selected = selectInjectableMemories(memories);
         if (selected.isEmpty()) {
-            return "- 暂无可注入的长期记忆。\n";
+            return "- 暂无额外偏好或项目约束。\n";
         }
 
         StringBuilder builder = new StringBuilder();
@@ -51,7 +51,7 @@ public class MemoryContextAssembler {
             usedChars += line.length();
         }
         if (builder.length() == 0) {
-            return "- 暂无可注入的长期记忆。\n";
+            return "- 暂无额外偏好或项目约束。\n";
         }
         return builder.toString();
     }

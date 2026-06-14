@@ -14,6 +14,8 @@ public interface MemoryEntryRepository extends JpaRepository<MemoryEntryEntity, 
 
     List<MemoryEntryEntity> findByWorkspaceIdAndUserIdAndStatusOrderByUpdatedAtDesc(Long workspaceId, String userId, String status);
 
+    List<MemoryEntryEntity> findByWorkspaceIdAndUserIdOrderByUpdatedAtDesc(Long workspaceId, String userId);
+
     List<MemoryEntryEntity> findByWorkspaceIdAndUserIdAndNormalizedKeyOrderByUpdatedAtDesc(Long workspaceId, String userId, String normalizedKey);
 
     List<MemoryEntryEntity> findBySourceMessageId(Long sourceMessageId);

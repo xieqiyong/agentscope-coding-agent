@@ -1,19 +1,18 @@
 import api from './index'
-import type { MemoryEntry, MemoryStatus } from '@/types'
 
 export const memoryApi = {
-  list: (workspaceId: string): Promise<any> =>
-    api.get('/memories', { params: { workspaceId } }),
+  list: (workspaceId: string, userId = 'default', status = 'ALL'): Promise<any> =>
+    api.post('/memories/list', { workspaceId, userId, status }),
 
-  create: (data: { workspaceId: string; type: string; content: string }): Promise<any> =>
-    api.post('/memories', data),
+  create: (data: { workspaceId: string; type: string; content: string; userId?: string }): Promise<any> =>
+    api.post('/memories/create', { userId: 'default', ...data }),
 
   approve: (id: string): Promise<any> =>
-    api.put(`/memories/${id}/approve`),
+    api.post('/memories/approve', { id, userId: 'default' }),
 
   reject: (id: string): Promise<any> =>
-    api.put(`/memories/${id}/reject`),
+    api.post('/memories/reject', { id, userId: 'default' }),
 
   disable: (id: string): Promise<any> =>
-    api.put(`/memories/${id}/disable`),
+    api.post('/memories/disable', { id, userId: 'default' }),
 }

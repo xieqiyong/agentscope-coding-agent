@@ -76,20 +76,26 @@ export type MemoryType =
   | 'SKILL_REFERENCE'
 
 export type MemoryStatus =
-  | 'CANDIDATE'
+  | 'PENDING'
   | 'ACTIVE'
   | 'CONFLICT'
   | 'DISABLED'
-  | 'EXPIRED'
   | 'REJECTED'
 
 export interface MemoryEntry {
   id: string
   workspaceId: string
+  agentId?: string
+  userId?: string
   type: MemoryType
+  memoryType?: MemoryType
+  normalizedKey?: string
   content: string
   status: MemoryStatus
   confidence: number
+  reviewReason?: string
+  sourceConversationId?: string
+  sourceMessageId?: string
   createdAt: string
   updatedAt: string
 }

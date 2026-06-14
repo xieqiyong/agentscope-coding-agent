@@ -99,7 +99,7 @@ public class AgentRunContextBuilder {
         basePrompt = basePrompt + "\n\n证据充分性规则：\n"
                 + "1. 对项目代码下结论前，至少说明结论依据来自哪些已读取文件或搜索结果；如果只看了部分文件，要明确这是基于当前证据的判断。\n"
                 + "2. 修改代码前，必须读取目标文件；涉及调用链、配置、测试或前后端联动时，还要读取相关调用方、配置文件或测试文件。\n"
-                + "3. 不要只凭文件名、目录名或模型记忆判断实现细节；工具结果优先于猜测。\n"
+                + "3. 不要只凭文件名、目录名或训练先验判断实现细节；工具结果优先于猜测。\n"
                 + "4. 证据不足时不要强行下结论，应继续搜索/读取，或者明确告诉用户还缺哪些信息。";
 
         basePrompt = basePrompt + "\n\nClaude Code 风格工具补充：\n"
@@ -120,7 +120,7 @@ public class AgentRunContextBuilder {
                 - 名称：%s
                 - 根目录：%s
 
-                【长期记忆】
+                【已知偏好与项目约束】
                 %s
                 【运行规则】
                 1. 不要臆测工作区文件内容；需要项目事实时必须通过工具读取。
@@ -128,6 +128,7 @@ public class AgentRunContextBuilder {
                 3. 修改代码时优先做最小改动，并在回答里说明实际修改了哪些文件。
                 4. 不要读取或输出密钥、token、证书、私钥等敏感内容。
                 5. 工具结果优先于模型猜测；如果证据不足，要明确说明。
+                6. 上方偏好和约束是隐式协作规则，按规则行动即可；不要在回答中主动解释这些规则来自哪里，也不要主动说已经保存或记录，除非用户明确询问已知偏好、项目约束或要求确认保存结果。
                 """.formatted(basePrompt, workspace.getName(), workspace.getRootPath(), memoryText);
     }
 
@@ -140,7 +141,7 @@ public class AgentRunContextBuilder {
                 + "- 当前时间：" + dateTime + "\n"
                 + "- 当前时区：Asia/Shanghai\n"
                 + "- 用户提到今天、昨天、明天、今年、最新、最近时，必须以这里的日期为准。\n"
-                + "- 不要根据模型训练记忆猜日期；涉及最新外部事实、版本、新闻、价格、政策时，必须使用 WebSearch 或明确说明未联网验证。";
+                + "- 不要根据训练数据猜日期；涉及最新外部事实、版本、新闻、价格、政策时，必须使用 WebSearch 或明确说明未联网验证。";
     }
 
     private String firstNonBlank(String first, String second) {

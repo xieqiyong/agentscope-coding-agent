@@ -6,7 +6,8 @@
       <span class="memory-confidence">{{ Math.round(memory.confidence * 100) }}%</span>
       <span class="memory-status-badge" :class="memory.status.toLowerCase()">{{ memory.status }}</span>
     </div>
-    <div class="memory-actions" v-if="memory.status === 'CANDIDATE' || memory.status === 'CONFLICT'">
+    <div v-if="memory.reviewReason" class="memory-review">{{ memory.reviewReason }}</div>
+    <div class="memory-actions" v-if="memory.status === 'PENDING' || memory.status === 'CONFLICT'">
       <button class="action-btn approve" @click="$emit('approve')" title="批准">
         <i class="pi pi-check"></i>
       </button>
@@ -50,7 +51,7 @@ function formatType(type: string): string {
 }
 
 .memory-item.active { border-left-color: var(--success); }
-.memory-item.candidate { border-left-color: var(--accent); }
+.memory-item.pending { border-left-color: var(--accent); }
 .memory-item.conflict { border-left-color: var(--warning); }
 .memory-item.disabled { border-left-color: var(--text-muted); opacity: 0.5; }
 .memory-item.rejected { border-left-color: var(--danger); opacity: 0.5; }
@@ -81,6 +82,13 @@ function formatType(type: string): string {
   margin-top: 4px;
 }
 
+.memory-review {
+  margin-top: 4px;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
 .memory-confidence {
   font-family: var(--font-mono);
   font-size: 0.6rem;
@@ -96,7 +104,7 @@ function formatType(type: string): string {
 }
 
 .memory-status-badge.active { color: #166534; }
-.memory-status-badge.candidate { color: #1e40af; }
+.memory-status-badge.pending { color: #1e40af; }
 .memory-status-badge.conflict { color: #92400e; }
 .memory-status-badge.disabled { color: var(--text-muted); }
 
