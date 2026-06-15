@@ -167,6 +167,9 @@ public class ToolApprovalService {
     }
 
     private String classifyRisk(String toolName) {
+        if (isCommandTool(toolName)) {
+            return "CRITICAL";
+        }
         if ("apply_patch".equals(toolName) || "Edit".equals(toolName)) {
             return "HIGH";
         }
@@ -174,6 +177,13 @@ public class ToolApprovalService {
             return "HIGH";
         }
         return "MEDIUM";
+    }
+
+    private boolean isCommandTool(String toolName) {
+        return "Bash".equalsIgnoreCase(toolName)
+                || "Shell".equalsIgnoreCase(toolName)
+                || "run_command".equalsIgnoreCase(toolName)
+                || "runCommand".equalsIgnoreCase(toolName);
     }
 
     private String toJson(Map<String, Object> value) {

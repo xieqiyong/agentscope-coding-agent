@@ -14,7 +14,7 @@
 | 6 | 运行状态机 | 已完成第一轮 | 建模 RUNNING、WAITING_APPROVAL、COMPLETED、FAILED、TIMEOUT、CANCELLED 等状态 |
 | 7 | 记忆系统产品化 | 已完成第二轮 | 已完成 ACTIVE 注入、规则捕获、审核接口和前端管理，后续补语义抽取和沙箱联动 |
 | 8 | 权限治理 | 已完成第一轮 | 已接入 AgentScope PermissionEngine、工具确认事件、审批落库和确认后恢复 |
-| 9 | 命令级沙箱 | 未开始 | 实现 Bash、超时、stdout/stderr 流式、后台任务和危险命令拦截 |
+| 9 | 命令级沙箱 | 已完成第一轮 | 已开放 Bash/Shell/run_command，完成确认链路、allowlist、超时和输出截断 |
 | 10 | Checkpoint + Pending Action | 已完成工具审批恢复第一轮 | 用户确认后从挂起点继续，异常后能恢复或补偿 |
 | 11 | 回滚和补偿 | 未开始 | 文件快照、多文件事务、run 失败后的恢复策略 |
 | 12 | 多 Agent / 计划型 Agent | 未开始 | 学习 Plan、Observe、Execute、Review 等 Agent 形态 |
@@ -103,9 +103,9 @@ Runtime 产生结构化事件
 
 当前边界：
 
-- 命令执行沙箱还没有开始。
-- Bash 还没有开放。
-- 跨 workspace、敏感文件和危险操作后续进入权限治理。
+- 命令执行沙箱已完成第一轮。
+- Bash/Shell/run_command 已开放，但必须经过用户确认和命令 allowlist。
+- stdout/stderr 实时流、后台任务、进程树治理和动态 allowlist 后续进入治理增强。
 
 ## 已完成：SessionKey / AgentState
 
@@ -241,15 +241,31 @@ docs/13-工具权限治理实现记录.md
 
 ### 9. 命令级沙箱
 
-要学习和实现：
+已完成第一轮：
 
 - `Bash`
+- `Shell`
+- `run_command`
+- 工具调用前用户确认。
+- workspace 工作目录限制。
+- allowlist 前缀策略。
+- 危险命令片段拦截。
+- shell 控制符拦截。
+- 交互式命令拦截。
 - 命令超时。
+- stdout / stderr 截断。
+
+后续要学习和实现：
+
 - stdout / stderr 流式返回。
 - 后台任务。
-- 危险命令拦截。
-- 工作目录限制。
 - 环境变量控制。
+
+详见：
+
+```text
+docs/14-命令级沙箱实现记录.md
+```
 
 ### 10. Checkpoint + Pending Action
 
@@ -305,7 +321,7 @@ Agent 请求完整生命周期 ✅
 运行状态机 ✅
 记忆系统产品化 ✅
 权限治理第一轮 ✅
-命令沙箱
+命令沙箱第一轮 ✅
 Checkpoint 工具审批恢复第一轮 ✅
 多 Agent 编排
 ```

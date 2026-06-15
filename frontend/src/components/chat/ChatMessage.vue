@@ -306,6 +306,9 @@ function formatEditSummary(toolCall: ToolCallInfo): string {
 }
 
 function compactToolSignature(toolName: string, args: Record<string, unknown>): string {
+  if (isCommandTool(toolName)) {
+    return `${toolName}(command=${abbreviateArg(formatArgValue(args.command), 120)})`
+  }
   if (toolName === 'write_file') {
     const path = formatArgValue(args.path)
     const mode = args.writeMode ? `, mode=${formatArgValue(args.writeMode)}` : ''
@@ -342,6 +345,15 @@ function formatArgValue(value: unknown): string {
   } catch {
     return String(value)
   }
+}
+
+function abbreviateArg(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text
+  return text.slice(0, maxChars) + '...'
+}
+
+function isCommandTool(toolName: string): boolean {
+  return ['bash', 'shell', 'run_command', 'runcommand'].includes(toolName.toLowerCase())
 }
 </script>
 

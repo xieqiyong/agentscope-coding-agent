@@ -20,15 +20,16 @@ public class AgentScopePermissionProperties {
     private boolean enabled = true;
 
     /**
-     * 是否让直接写文件类工具进入用户确认流程。
+     * 是否让高风险工具进入用户确认流程。
      */
     private boolean directWriteApprovalEnabled = true;
 
     /**
-     * 需要确认的直接写入工具名。
+     * 需要确认的高风险工具名。
      */
     private List<String> approvalRequiredTools = new ArrayList<>(
-            List.of("write_file", "Write", "Edit", "apply_patch")
+            List.of("write_file", "Write", "Edit", "apply_patch",
+                    "Bash", "bash", "Shell", "shell", "run_command", "runCommand")
     );
 
     public boolean isEnabled() {

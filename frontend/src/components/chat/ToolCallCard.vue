@@ -73,11 +73,17 @@ const toolIcon = computed(() => {
     propose_patch: 'pi pi-pencil',
     propose_file_change: 'pi pi-file-edit',
     WebSearch: 'pi pi-globe',
+    Bash: 'pi pi-terminal',
+    Shell: 'pi pi-terminal',
+    run_command: 'pi pi-terminal',
   }
   return icons[props.toolCall.toolName] || 'pi pi-wrench'
 })
 
 function compactToolSignature(toolName: string, args: Record<string, unknown>): string {
+  if (isCommandTool(toolName)) {
+    return `${toolName}(command=${abbreviateArg(formatArgValue(args.command), 120)})`
+  }
   if (toolName === 'write_file') {
     const path = formatArgValue(args.path)
     const mode = args.writeMode ? `, mode=${formatArgValue(args.writeMode)}` : ''
@@ -152,6 +158,15 @@ function formatJson(obj: Record<string, unknown>): string {
 
 function truncate(text: string, max: number): string {
   return text.length > max ? text.slice(0, max) + '...' : text
+}
+
+function abbreviateArg(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text
+  return text.slice(0, maxChars) + '...'
+}
+
+function isCommandTool(toolName: string): boolean {
+  return ['bash', 'shell', 'run_command', 'runcommand'].includes(toolName.toLowerCase())
 }
 </script>
 

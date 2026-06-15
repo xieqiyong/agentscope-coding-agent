@@ -164,6 +164,9 @@ class AgentScopeEventTranslator {
             return "MEDIUM";
         }
         for (ToolUseBlock block : blocks) {
+            if ("CRITICAL".equals(classifyRisk(block.getName()))) {
+                return "CRITICAL";
+            }
             if ("HIGH".equals(classifyRisk(block.getName()))) {
                 return "HIGH";
             }
@@ -172,11 +175,21 @@ class AgentScopeEventTranslator {
     }
 
     private String classifyRisk(String toolName) {
+        if (isCommandTool(toolName)) {
+            return "CRITICAL";
+        }
         if ("apply_patch".equals(toolName) || "Edit".equals(toolName)
                 || "write_file".equals(toolName) || "Write".equals(toolName)) {
             return "HIGH";
         }
         return "MEDIUM";
+    }
+
+    private boolean isCommandTool(String toolName) {
+        return "Bash".equalsIgnoreCase(toolName)
+                || "Shell".equalsIgnoreCase(toolName)
+                || "run_command".equalsIgnoreCase(toolName)
+                || "runCommand".equalsIgnoreCase(toolName);
     }
 
     private Map<String, Object> toolMetadata(Object toolCallId, Object toolName) {
@@ -207,4 +220,3 @@ class AgentScopeEventTranslator {
         return value == null ? "" : String.valueOf(value);
     }
 }
-

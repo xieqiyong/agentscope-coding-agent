@@ -110,7 +110,9 @@ public class AgentRunContextBuilder {
                 + "5. propose_patch 和 propose_file_change 只保存审核提案，不会直接写入磁盘；只有用户明确要求审核、修改敏感文件或高风险变更时才使用。\n"
                 + "6. 只有 Write、write_file、Edit 或 apply_patch 返回成功后，才能声称文件已经创建或修改完成。\n"
                 + "7. 直接写入工具可能会被平台权限治理暂停并要求用户确认；如果工具结果显示被拒绝或等待确认，不要声称修改已经完成。\n"
-                + "8. Bash、Notebook、子 Agent、任务编排暂未开放，不要假装已经执行这些工具。";
+                + "8. Bash/Shell/run_command 已开放，但只能用于非交互、单行、工作区内、沙箱允许列表中的命令，例如 npm test、npm run build、mvn test、git status、git diff。\n"
+                + "9. Bash/Shell/run_command 会触发平台权限确认；确认通过后仍可能被命令沙箱拒绝。不要执行破坏性命令、交互命令、管道、重定向或链式 shell 控制符。\n"
+                + "10. Notebook、子 Agent、任务编排暂未开放，不要假装已经执行这些工具。";
 
         String memoryText = memoryContextAssembler.assemblePromptSection(memories);
 

@@ -10,8 +10,10 @@ import com.agentplatform.runtime.model.RuntimeEvent;
 import com.agentplatform.runtime.model.RuntimeEventSink;
 import com.agentplatform.runtime.model.RuntimeEventType;
 import com.agentplatform.runtime.service.ToolApprovalService;
+import com.agentplatform.runtime.tool.CodingAgentCommandTools;
 import com.agentplatform.runtime.tool.CodingAgentWebSearchTools;
 import com.agentplatform.runtime.tool.CodingAgentWorkspaceTools;
+import com.agentplatform.sandbox.CommandSandboxService;
 import com.agentplatform.sandbox.PatchApplyService;
 import com.agentplatform.sandbox.SandboxPathResolver;
 import io.agentscope.core.ReActAgent;
@@ -51,6 +53,9 @@ public class AgentScopeRuntimeAdapter {
 
     @Resource
     private PatchApplyService patchApplyService;
+
+    @Resource
+    private CommandSandboxService commandSandboxService;
 
     @Resource
     private AgentScopeSessionManager sessionManager;
@@ -153,6 +158,7 @@ public class AgentScopeRuntimeAdapter {
         CodingAgentWorkspaceTools workspaceTools =
                 new CodingAgentWorkspaceTools(context, sandboxPathResolver, patchRepository, patchFileRepository, patchApplyService);
         toolkit.registerTool(workspaceTools);
+        toolkit.registerTool(new CodingAgentCommandTools(context, commandSandboxService));
         toolkit.registerTool(new CodingAgentWebSearchTools());
         return toolkit;
     }
