@@ -1,11 +1,15 @@
 package com.agentplatform.runtime.tool;
 
 import com.agentplatform.runtime.model.RuntimeContext;
+import com.agentplatform.runtime.service.RuntimeToolGuard;
 import com.agentplatform.sandbox.CommandExecutionResult;
 import com.agentplatform.sandbox.CommandSandboxService;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
+import io.agentscope.core.tool.ToolSuspendException;
 import org.springframework.util.StringUtils;
+
+import java.util.Map;
 
 /**
  * 暴露给 AgentScope 的命令工具。
@@ -15,10 +19,14 @@ public class CodingAgentCommandTools {
 
     private final RuntimeContext context;
     private final CommandSandboxService commandSandboxService;
+    private final RuntimeToolGuard runtimeToolGuard;
 
-    public CodingAgentCommandTools(RuntimeContext context, CommandSandboxService commandSandboxService) {
+    public CodingAgentCommandTools(RuntimeContext context,
+                                   CommandSandboxService commandSandboxService,
+                                   RuntimeToolGuard runtimeToolGuard) {
         this.context = context;
         this.commandSandboxService = commandSandboxService;
+        this.runtimeToolGuard = runtimeToolGuard;
     }
 
     @Tool(name = "Bash", description = "在当前工作区内执行非交互命令。仅允许沙箱 allowlist 内的构建、测试和只读 git 命令；高风险命令会先请求用户确认。", readOnly = false)
@@ -49,6 +57,17 @@ public class CodingAgentCommandTools {
     }
 
     private String execute(String command, String description, Integer timeoutSeconds, String workingDirectory) {
+        RuntimeToolGuard.ToolGuardDecision decision = runtimeToolGuard.beforeToolExecution(
+                context,
+                "Bash",
+                buildInput(command, description, timeoutSeconds, workingDirectory),
+                StringUtils.hasText(description) ? description : command
+        );
+        if (decision.approvalRequired()) {
+            // 中文注释：平台级审批是一次真正的 interrupt，不能把“等待审批”当普通工具结果继续喂给模型。
+            throw new ToolSuspendException(decision.message());
+        }
+
         CommandExecutionResult result = commandSandboxService.execute(
                 context.getWorkspace().getRootPath(),
                 workingDirectory,
@@ -56,6 +75,22 @@ public class CodingAgentCommandTools {
                 timeoutSeconds
         );
         return formatResult(result, description);
+    }
+
+    private Map<String, Object> buildInput(String command, String description,
+                                           Integer timeoutSeconds, String workingDirectory) {
+        Map<String, Object> input = new java.util.LinkedHashMap<>();
+        input.put("command", command);
+        if (StringUtils.hasText(description)) {
+            input.put("description", description);
+        }
+        if (timeoutSeconds != null) {
+            input.put("timeoutSeconds", timeoutSeconds);
+        }
+        if (StringUtils.hasText(workingDirectory)) {
+            input.put("workingDirectory", workingDirectory);
+        }
+        return input;
     }
 
     private String formatResult(CommandExecutionResult result, String description) {

@@ -160,6 +160,10 @@ export const useChatStore = defineStore('chat', () => {
         handleConfirmationRequired(event)
         break
 
+      case 'RUN_STATUS_CHANGED':
+        handleRunStatusChanged(event)
+        break
+
       case 'RUN_FINISHED':
       case 'AGENT_FINISHED':
         rememberConversationFromEvent(event)
@@ -399,7 +403,8 @@ export const useChatStore = defineStore('chat', () => {
       return
     }
 
-    toolCall.status = 'completed'
+    const state = readString(meta.state).toUpperCase()
+    toolCall.status = ['ERROR', 'FAILED', 'TIMEOUT', 'REJECTED'].includes(state) ? 'error' : 'completed'
     toolCall.durationMs = event.elapsedMs || (Date.now() - (toolCall.startedAt || Date.now()))
 
     if (isPatchProposalTool(toolCall.toolName)) {
@@ -423,6 +428,17 @@ export const useChatStore = defineStore('chat', () => {
       messages.value.push(lastMsg)
     }
     return lastMsg
+  }
+
+  function handleRunStatusChanged(event: RuntimeEvent) {
+    const status = readString(event.metadata?.status).toUpperCase()
+    if (status === 'RUNNING') {
+      isStreaming.value = true
+    }
+    if (status === 'WAITING_APPROVAL') {
+      isStreaming.value = false
+      finalizeStreamingMessage()
+    }
   }
 
   function ensureAssistantToolMessage(): ChatMessage {

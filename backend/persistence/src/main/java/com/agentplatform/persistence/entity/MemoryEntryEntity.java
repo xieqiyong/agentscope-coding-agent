@@ -47,7 +47,7 @@ public class MemoryEntryEntity extends BaseEntity {
      * 记忆内容
      */
     @Lob
-    @Column(name = "content", nullable = false)
+    @Column(name = "content", nullable = false, columnDefinition = "LONGTEXT")
     private String content;
     /**
      * 来源会话 ID

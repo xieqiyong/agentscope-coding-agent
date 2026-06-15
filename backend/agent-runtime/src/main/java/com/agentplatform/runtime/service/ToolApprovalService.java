@@ -54,6 +54,8 @@ public class ToolApprovalService {
         }
 
         String replyId = stringValue(event.getMetadata().get("replyId"));
+        String approvalMode = stringValue(event.getMetadata().get("approvalMode"));
+        String reason = stringValue(event.getMetadata().get("reason"));
         List<Map<String, Object>> approvals = new ArrayList<>();
         for (Map<String, Object> toolCall : toolCalls) {
             ApprovalRequestEntity entity = new ApprovalRequestEntity();
@@ -61,7 +63,7 @@ public class ToolApprovalService {
             entity.setWorkspaceId(run.getWorkspaceId());
             entity.setRequestType("TOOL_PERMISSION");
             entity.setTitle("确认执行工具 " + stringValue(toolCall.get("name")));
-            entity.setDetailJson(toJson(buildDetail(replyId, toolCall)));
+            entity.setDetailJson(toJson(buildDetail(replyId, approvalMode, reason, toolCall)));
             entity.setStatus(ApprovalStatus.PENDING.name());
             entity = approvalRequestRepository.save(entity);
 
@@ -128,12 +130,40 @@ public class ToolApprovalService {
         return new ToolApprovalPayload(stringValue(detail.get("replyId")), block);
     }
 
-    private Map<String, Object> buildDetail(String replyId, Map<String, Object> toolCall) {
+    public boolean isPlatformToolApproval(ApprovalRequestEntity approval) {
+        if (approval == null || !StringUtils.hasText(approval.getDetailJson())) {
+            return false;
+        }
+        Map<String, Object> detail = fromJson(approval.getDetailJson());
+        return RuntimeToolGuard.APPROVAL_MODE_PLATFORM_TOOL_GUARD.equals(stringValue(detail.get("approvalMode")));
+    }
+
+    public PlatformToolApprovalPayload loadPlatformToolPayload(ApprovalRequestEntity approval) {
+        if (approval == null || !StringUtils.hasText(approval.getDetailJson())) {
+            throw new BusinessException(400, "审批详情为空，无法恢复平台工具调用");
+        }
+        Map<String, Object> detail = fromJson(approval.getDetailJson());
+        Map<String, Object> toolCall = readMap(detail.get("toolCall"));
+        if (toolCall.isEmpty()) {
+            throw new BusinessException(400, "审批详情缺少平台工具调用信息");
+        }
+        return new PlatformToolApprovalPayload(
+                stringValue(toolCall.get("id")),
+                stringValue(toolCall.get("name")),
+                readMap(toolCall.get("input"))
+        );
+    }
+
+    private Map<String, Object> buildDetail(String replyId, String approvalMode,
+                                            String reason, Map<String, Object> toolCall) {
         Map<String, Object> detail = new LinkedHashMap<>();
         detail.put("replyId", replyId);
         detail.put("requestType", "TOOL_PERMISSION");
+        detail.put("approvalMode", StringUtils.hasText(approvalMode) ? approvalMode : "AGENTSCOPE_PERMISSION");
         detail.put("riskLevel", classifyRisk(stringValue(toolCall.get("name"))));
-        detail.put("reason", "AgentScope PermissionEngine 要求用户确认后再执行工具");
+        detail.put("reason", StringUtils.hasText(reason)
+                ? reason
+                : "AgentScope PermissionEngine 要求用户确认后再执行工具");
         detail.put("toolCall", toolCall);
         return detail;
     }
@@ -207,5 +237,8 @@ public class ToolApprovalService {
     }
 
     public record ToolApprovalPayload(String replyId, ToolUseBlock toolCall) {
+    }
+
+    public record PlatformToolApprovalPayload(String toolCallId, String toolName, Map<String, Object> input) {
     }
 }

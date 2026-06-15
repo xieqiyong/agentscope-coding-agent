@@ -16,9 +16,11 @@
 | 8 | 权限治理 | 已完成第一轮 | 已接入 AgentScope PermissionEngine、工具确认事件、审批落库和确认后恢复 |
 | 9 | 命令级沙箱 | 已完成第一轮 | 已开放 Bash/Shell/run_command，完成确认链路、allowlist、超时和输出截断 |
 | 10 | Checkpoint + Pending Action | 已完成工具审批恢复第一轮 | 用户确认后从挂起点继续，异常后能恢复或补偿 |
-| 11 | 回滚和补偿 | 未开始 | 文件快照、多文件事务、run 失败后的恢复策略 |
-| 12 | 多 Agent / 计划型 Agent | 未开始 | 学习 Plan、Observe、Execute、Review 等 Agent 形态 |
-| 13 | 产品化治理 | 未开始 | 审计、限流、fallback、workspace 管理和前端体验打磨 |
+| 11 | 平台级 ToolGuard / Interrupt | 已完成第一轮 | Bash 已走平台 ASK、approval-stream 直接执行挂起工具 |
+| 12 | fallback 与治理增强 | 未开始 | 模型 fallback、工具 fallback、运行失败恢复 |
+| 13 | 回滚和补偿 | 未开始 | 文件快照、多文件事务、run 失败后的恢复策略 |
+| 14 | 多 Agent / 计划型 Agent | 未开始 | 学习 Plan、Observe、Execute、Review 等 Agent 形态 |
+| 15 | 产品化治理 | 未开始 | 审计、限流、fallback、workspace 管理和前端体验打磨 |
 
 ## 已完成内容
 
@@ -276,7 +278,35 @@ docs/14-命令级沙箱实现记录.md
 - 模型网关断线后恢复。
 - pending tool recovery 如何接入。
 
-### 11. 回滚和补偿
+### 11. 平台级 ToolGuard / Interrupt
+
+已完成第一轮：
+
+- `RuntimeToolGuard`。
+- Bash/Shell/run_command 工具执行前平台 ASK。
+- `approval_requests.detail_json` 保存平台 pending action。
+- `chat-stream` 返回 `CONFIRMATION_REQUIRED`。
+- `approval-stream` 批准后直接执行挂起 Bash。
+- 命令执行前仍经过 `CommandSandboxService`。
+
+详见：
+
+```text
+docs/15-平台级ToolGuard与Interrupt设计记录.md
+```
+
+### 12. fallback 与治理增强
+
+要学习和实现：
+
+- 模型 fallback。
+- 工具 fallback。
+- 流式断线恢复。
+- 命令 stdout/stderr 实时流。
+- 工具审计详情表。
+- run 级失败恢复。
+
+### 13. 回滚和补偿
 
 要学习和实现：
 
@@ -285,7 +315,7 @@ docs/14-命令级沙箱实现记录.md
 - run 失败后的补偿策略。
 - git / worktree 级隔离。
 
-### 12. 多 Agent / 计划型 Agent
+### 14. 多 Agent / 计划型 Agent
 
 要学习和实现：
 
@@ -296,7 +326,7 @@ docs/14-命令级沙箱实现记录.md
 - 子 Agent 隔离上下文。
 - 任务拆解和结果合并。
 
-### 13. 产品化治理
+### 15. 产品化治理
 
 要学习和实现：
 
@@ -323,5 +353,7 @@ Agent 请求完整生命周期 ✅
 权限治理第一轮 ✅
 命令沙箱第一轮 ✅
 Checkpoint 工具审批恢复第一轮 ✅
+平台级 ToolGuard / Interrupt 第一轮 ✅
+fallback 与治理增强
 多 Agent 编排
 ```

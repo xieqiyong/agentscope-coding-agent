@@ -42,7 +42,7 @@ public class ApprovalRequestEntity extends BaseEntity {
      * 确认详情 JSON
      */
     @Lob
-    @Column(name = "detail_json", nullable = true)
+    @Column(name = "detail_json", nullable = true, columnDefinition = "LONGTEXT")
     private String detailJson;
     /**
      * 确认状态

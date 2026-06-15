@@ -31,6 +31,9 @@ public class RuntimeContext {
     private int timeoutSeconds;
     private List<ConversationMessageEntity> recentMessages = new ArrayList<>();
     private List<MemoryEntryEntity> activeMemories = new ArrayList<>();
+    private RuntimeEventSink runtimeEventSink = RuntimeEventSink.noop();
+    private long runStartedNanos;
+    private boolean platformApprovalRequired;
 
     /**
      * AgentScope 内部状态是否启用。它只影响 AgentState 恢复，不影响数据库会话展示。
@@ -179,6 +182,30 @@ public class RuntimeContext {
 
     public void setActiveMemories(List<MemoryEntryEntity> activeMemories) {
         this.activeMemories = activeMemories;
+    }
+
+    public RuntimeEventSink getRuntimeEventSink() {
+        return runtimeEventSink;
+    }
+
+    public void setRuntimeEventSink(RuntimeEventSink runtimeEventSink) {
+        this.runtimeEventSink = runtimeEventSink != null ? runtimeEventSink : RuntimeEventSink.noop();
+    }
+
+    public long getRunStartedNanos() {
+        return runStartedNanos;
+    }
+
+    public void setRunStartedNanos(long runStartedNanos) {
+        this.runStartedNanos = runStartedNanos;
+    }
+
+    public boolean isPlatformApprovalRequired() {
+        return platformApprovalRequired;
+    }
+
+    public void setPlatformApprovalRequired(boolean platformApprovalRequired) {
+        this.platformApprovalRequired = platformApprovalRequired;
     }
 
     public boolean isAgentScopeSessionEnabled() {

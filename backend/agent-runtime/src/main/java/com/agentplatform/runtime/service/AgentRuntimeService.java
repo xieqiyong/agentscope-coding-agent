@@ -19,6 +19,8 @@ import com.agentplatform.runtime.model.RuntimeContext;
 import com.agentplatform.runtime.model.RuntimeEvent;
 import com.agentplatform.runtime.model.RuntimeEventSink;
 import com.agentplatform.runtime.model.RuntimeEventType;
+import com.agentplatform.sandbox.CommandExecutionResult;
+import com.agentplatform.sandbox.CommandSandboxService;
 import jakarta.annotation.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -65,6 +67,9 @@ public class AgentRuntimeService {
     @Resource
     private ToolApprovalService toolApprovalService;
 
+    @Resource
+    private CommandSandboxService commandSandboxService;
+
     public AgentRunResult executeStreaming(AgentRunCommand command, RuntimeEventSink clientSink) {
         validateCommand(command);
         long started = System.nanoTime();
@@ -89,6 +94,8 @@ public class AgentRuntimeService {
 
         try {
             RuntimeContext context = contextBuilder.build(command, conversation.getId(), userMessage.getId(), run.getId(), traceId);
+            context.setRuntimeEventSink(persistedSink);
+            context.setRunStartedNanos(started);
             emit(persistedSink, run.getId(), traceId, RuntimeEventType.CONTEXT_LOADED, "上下文加载完成",
                     null, Map.of(
                             "workspaceId", context.getWorkspace().getId(),
@@ -151,6 +158,9 @@ public class AgentRuntimeService {
 
         try {
             AgentRunCommand resumeCommand = buildApprovalResumeCommand(command, run);
+            if (toolApprovalService.isPlatformToolApproval(approval)) {
+                return resumePlatformToolApproval(command, approval, run, resumeCommand, persistedSink, started);
+            }
             ToolApprovalService.ToolApprovalPayload payload = toolApprovalService.loadPayload(approval);
             RuntimeContext context = contextBuilder.build(
                     resumeCommand,
@@ -159,6 +169,8 @@ public class AgentRuntimeService {
                     run.getId(),
                     run.getTraceId()
             );
+            context.setRuntimeEventSink(persistedSink);
+            context.setRunStartedNanos(started);
 
             AgentRunResult result = agentScopeRuntimeAdapter.resumeAfterApproval(
                     context,
@@ -311,6 +323,10 @@ public class AgentRuntimeService {
         Map<String, Object> metadata = new java.util.LinkedHashMap<>(
                 event.getMetadata() != null ? event.getMetadata() : Map.of()
         );
+        if (metadata.containsKey("approvalId") || metadata.containsKey("approvalRequests")) {
+            event.setMetadata(metadata);
+            return event;
+        }
         var approvals = toolApprovalService.createPendingApprovals(event);
         metadata.put("approvalRequests", approvals);
         if (!approvals.isEmpty()) {
@@ -318,6 +334,218 @@ public class AgentRuntimeService {
         }
         event.setMetadata(metadata);
         return event;
+    }
+
+    private AgentRunResult resumePlatformToolApproval(AgentApprovalCommand approvalCommand,
+                                                      ApprovalRequestEntity approval,
+                                                      AgentRunEntity run,
+                                                      AgentRunCommand resumeCommand,
+                                                      RuntimeEventSink sink,
+                                                      long started) {
+        ToolApprovalService.PlatformToolApprovalPayload payload = toolApprovalService.loadPlatformToolPayload(approval);
+        emit(sink, run.getId(), run.getTraceId(), RuntimeEventType.CONFIRMATION_RESULT, "用户确认结果",
+                Boolean.TRUE.equals(approvalCommand.getApproved())
+                        ? "用户已批准平台工具调用"
+                        : "用户已拒绝平台工具调用",
+                Map.of(
+                        "approvalId", approval.getId(),
+                        "toolCallId", safe(payload.toolCallId()),
+                        "toolName", safe(payload.toolName()),
+                        "approved", Boolean.TRUE.equals(approvalCommand.getApproved())
+                ), elapsedMs(started));
+
+        if (!Boolean.TRUE.equals(approvalCommand.getApproved())) {
+            String answer = "用户已拒绝执行工具 " + safe(payload.toolName()) + "，本次高风险操作已停止。";
+            emitAssistantAnswer(sink, run, answer, started);
+            saveAssistantMessage(run.getConversationId(), answer);
+            AgentRunResult result = basePlatformResult(run, answer);
+            lifecycleService.completeRun(run.getId(), result);
+            emit(sink, run.getId(), run.getTraceId(), RuntimeEventType.RUN_FINISHED, "运行完成",
+                    "平台工具调用已被用户拒绝，运行结束",
+                    Map.of("status", AgentRunStatus.COMPLETED.name(), "conversationId", run.getConversationId()),
+                    elapsedMs(started));
+            return result;
+        }
+
+        RuntimeContext context = contextBuilder.build(
+                resumeCommand,
+                run.getConversationId(),
+                run.getUserMessageId(),
+                run.getId(),
+                run.getTraceId()
+        );
+        context.setRuntimeEventSink(sink);
+        context.setRunStartedNanos(started);
+
+        String toolName = safe(payload.toolName());
+        String toolCallId = safe(payload.toolCallId());
+        emit(sink, run.getId(), run.getTraceId(), RuntimeEventType.TOOL_CALL_STARTED, "开始准备工具调用",
+                null, toolCallMetadata(toolCallId, toolName, payload.input()), elapsedMs(started));
+        emit(sink, run.getId(), run.getTraceId(), RuntimeEventType.TOOL_RESULT_STARTED, "开始返回工具结果",
+                null, toolMetadata(toolCallId, toolName), elapsedMs(started));
+
+        PlatformToolExecutionOutcome outcome;
+        if (isCommandTool(toolName)) {
+            outcome = executeApprovedCommand(context, payload.input());
+        } else {
+            String text = "平台工具审批已通过，但暂未实现该工具的直接恢复执行：" + toolName;
+            outcome = new PlatformToolExecutionOutcome(text, text, "ERROR");
+        }
+
+        emit(sink, run.getId(), run.getTraceId(), RuntimeEventType.TOOL_RESULT_DELTA, "工具结果文本增量",
+                outcome.toolResult(), toolMetadata(toolCallId, toolName), elapsedMs(started));
+        emit(sink, run.getId(), run.getTraceId(), RuntimeEventType.TOOL_RESULT_FINISHED, "工具结果返回完成",
+                null, Map.of("toolCallId", toolCallId, "callId", toolCallId, "state", outcome.toolState()),
+                elapsedMs(started));
+
+        emitAssistantAnswer(sink, run, outcome.finalAnswer(), started);
+        saveAssistantMessage(run.getConversationId(), outcome.finalAnswer());
+        AgentRunResult result = basePlatformResult(run, outcome.finalAnswer());
+        lifecycleService.completeRun(run.getId(), result);
+        emit(sink, run.getId(), run.getTraceId(), RuntimeEventType.RUN_FINISHED, "运行完成",
+                "平台工具调用已完成", Map.of(
+                        "status", AgentRunStatus.COMPLETED.name(),
+                        "conversationId", run.getConversationId()
+                ), elapsedMs(started));
+        return result;
+    }
+
+    private PlatformToolExecutionOutcome executeApprovedCommand(RuntimeContext context, Map<String, Object> input) {
+        String command = stringValue(input.get("command"));
+        String description = stringValue(input.get("description"));
+        Integer timeoutSeconds = integerValue(input.get("timeoutSeconds"));
+        String workingDirectory = stringValue(input.get("workingDirectory"));
+        CommandExecutionResult result = commandSandboxService.execute(
+                context.getWorkspace().getRootPath(),
+                workingDirectory,
+                command,
+                timeoutSeconds
+        );
+        String toolResult = formatCommandResult(result, description);
+        return new PlatformToolExecutionOutcome(
+                toolResult,
+                formatCommandFinalAnswer(result),
+                commandToolState(result)
+        );
+    }
+
+    private String formatCommandResult(CommandExecutionResult result, String description) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("命令：").append(safe(result.command())).append("\n");
+        if (StringUtils.hasText(description)) {
+            builder.append("目的：").append(description.trim()).append("\n");
+        }
+        builder.append("工作目录：").append(safe(result.workingDirectory())).append("\n");
+        if (!result.allowed()) {
+            builder.append("执行状态：REJECTED\n")
+                    .append("拒绝原因：").append(safe(result.rejectReason())).append("\n");
+            return builder.toString();
+        }
+        builder.append("执行状态：").append(result.timedOut() ? "TIMEOUT" : "COMPLETED").append("\n")
+                .append("退出码：").append(result.exitCode() == null ? "N/A" : result.exitCode()).append("\n")
+                .append("耗时：").append(result.durationMs()).append("ms\n")
+                .append("stdout 截断：").append(result.stdoutTruncated() ? "是" : "否").append("\n")
+                .append("stderr 截断：").append(result.stderrTruncated() ? "是" : "否").append("\n\n")
+                .append("STDOUT:\n")
+                .append(StringUtils.hasText(result.stdout()) ? result.stdout() : "(empty)")
+                .append("\n\nSTDERR:\n")
+                .append(StringUtils.hasText(result.stderr()) ? result.stderr() : "(empty)");
+        return builder.toString();
+    }
+
+    private String formatCommandFinalAnswer(CommandExecutionResult result) {
+        if (!result.allowed()) {
+            return "已收到你的批准，但命令没有执行。\n\n"
+                    + "原因：命令被沙箱拒绝：" + safe(result.rejectReason()) + "\n\n"
+                    + "这不是还在等待审批，而是审批通过后的第二层命令沙箱拦截。删除类操作后续应该走受控删除工具，不应该通过 Bash 执行。";
+        }
+        if (result.timedOut()) {
+            return "命令已开始执行，但超过超时时间后被平台终止。\n\n"
+                    + "命令：" + safe(result.command());
+        }
+        if (result.exitCode() != null && result.exitCode() != 0) {
+            return "命令已执行完成，但退出码不是 0。\n\n"
+                    + "命令：" + safe(result.command()) + "\n"
+                    + "退出码：" + result.exitCode();
+        }
+        return "命令已执行完成。\n\n"
+                + "命令：" + safe(result.command()) + "\n"
+                + "退出码：" + (result.exitCode() == null ? "N/A" : result.exitCode());
+    }
+
+    private String commandToolState(CommandExecutionResult result) {
+        if (!result.allowed() || result.timedOut()) {
+            return "ERROR";
+        }
+        if (result.exitCode() != null && result.exitCode() != 0) {
+            return "ERROR";
+        }
+        return "SUCCESS";
+    }
+
+    private void emitAssistantAnswer(RuntimeEventSink sink, AgentRunEntity run, String answer, long started) {
+        emit(sink, run.getId(), run.getTraceId(), RuntimeEventType.ANSWER_STARTED, "开始生成回答",
+                null, Map.of("source", "PLATFORM_TOOL_APPROVAL"), elapsedMs(started));
+        emit(sink, run.getId(), run.getTraceId(), RuntimeEventType.ANSWER_DELTA, "回答增量",
+                answer, Map.of("source", "PLATFORM_TOOL_APPROVAL"), elapsedMs(started));
+        emit(sink, run.getId(), run.getTraceId(), RuntimeEventType.ANSWER_FINISHED, "回答生成完成",
+                null, Map.of("source", "PLATFORM_TOOL_APPROVAL"), elapsedMs(started));
+    }
+
+    private AgentRunResult basePlatformResult(AgentRunEntity run, String answer) {
+        AgentRunResult result = new AgentRunResult();
+        result.setRunId(run.getId());
+        result.setConversationId(run.getConversationId());
+        result.setTraceId(run.getTraceId());
+        result.setAnswer(answer);
+        result.setInputTokens(0);
+        result.setOutputTokens(estimateTokens(answer));
+        result.setModelCallCount(0);
+        result.setStatus(AgentRunStatus.COMPLETED.name());
+        return result;
+    }
+
+    private Map<String, Object> toolMetadata(String toolCallId, String toolName) {
+        return Map.of(
+                "toolCallId", toolCallId,
+                "callId", toolCallId,
+                "tool", toolName,
+                "toolName", toolName
+        );
+    }
+
+    private Map<String, Object> toolCallMetadata(String toolCallId, String toolName, Map<String, Object> args) {
+        Map<String, Object> metadata = new java.util.LinkedHashMap<>(toolMetadata(toolCallId, toolName));
+        metadata.put("args", args != null ? args : Map.of());
+        return metadata;
+    }
+
+    private boolean isCommandTool(String toolName) {
+        return "Bash".equalsIgnoreCase(toolName)
+                || "Shell".equalsIgnoreCase(toolName)
+                || "run_command".equalsIgnoreCase(toolName)
+                || "runCommand".equalsIgnoreCase(toolName);
+    }
+
+    private String stringValue(Object value) {
+        return value == null ? "" : String.valueOf(value);
+    }
+
+    private Integer integerValue(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value instanceof String text && StringUtils.hasText(text)) {
+            try {
+                return Integer.parseInt(text);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private record PlatformToolExecutionOutcome(String toolResult, String finalAnswer, String toolState) {
     }
 
     private void handleLifecycleEvent(Long runId, String traceId, RuntimeEvent event,

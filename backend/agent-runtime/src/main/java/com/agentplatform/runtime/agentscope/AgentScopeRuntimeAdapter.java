@@ -10,6 +10,7 @@ import com.agentplatform.runtime.model.RuntimeEvent;
 import com.agentplatform.runtime.model.RuntimeEventSink;
 import com.agentplatform.runtime.model.RuntimeEventType;
 import com.agentplatform.runtime.service.ToolApprovalService;
+import com.agentplatform.runtime.service.RuntimeToolGuard;
 import com.agentplatform.runtime.tool.CodingAgentCommandTools;
 import com.agentplatform.runtime.tool.CodingAgentWebSearchTools;
 import com.agentplatform.runtime.tool.CodingAgentWorkspaceTools;
@@ -24,6 +25,7 @@ import io.agentscope.core.message.UserMessage;
 import io.agentscope.core.model.OpenAIChatModel;
 import io.agentscope.core.permission.PermissionContextState;
 import io.agentscope.core.permission.PermissionRule;
+import io.agentscope.core.tool.ToolSuspendException;
 import io.agentscope.core.tool.Toolkit;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
@@ -58,6 +60,9 @@ public class AgentScopeRuntimeAdapter {
     private CommandSandboxService commandSandboxService;
 
     @Resource
+    private RuntimeToolGuard runtimeToolGuard;
+
+    @Resource
     private AgentScopeSessionManager sessionManager;
 
     @Resource
@@ -70,8 +75,8 @@ public class AgentScopeRuntimeAdapter {
         AgentScopeSessionBinding sessionBinding = sessionManager.bind(context);
         emitSessionLoaded(context, sink, sessionBinding, elapsedMs(startedNanos));
 
+        AgentScopeTraceRecorder recorder = new AgentScopeTraceRecorder(context, sink);
         try (ReActAgent agent = buildAgent(context, sessionBinding)) {
-            AgentScopeTraceRecorder recorder = new AgentScopeTraceRecorder(context, sink);
             List<Msg> inputMessages = buildInputMessages(context);
             agent.streamEvents(inputMessages)
                     .doOnNext(recorder::record)
@@ -80,6 +85,9 @@ public class AgentScopeRuntimeAdapter {
 
             return buildResult(context, recorder, inputText(context));
         } catch (Exception e) {
+            if (context.isPlatformApprovalRequired() || hasCause(e, ToolSuspendException.class)) {
+                return buildInterruptedResult(context, recorder, inputText(context));
+            }
             throw new RuntimeException("AgentScope 执行失败: " + e.getMessage(), e);
         }
     }
@@ -158,7 +166,7 @@ public class AgentScopeRuntimeAdapter {
         CodingAgentWorkspaceTools workspaceTools =
                 new CodingAgentWorkspaceTools(context, sandboxPathResolver, patchRepository, patchFileRepository, patchApplyService);
         toolkit.registerTool(workspaceTools);
-        toolkit.registerTool(new CodingAgentCommandTools(context, commandSandboxService));
+        toolkit.registerTool(new CodingAgentCommandTools(context, commandSandboxService, runtimeToolGuard));
         toolkit.registerTool(new CodingAgentWebSearchTools());
         return toolkit;
     }
@@ -193,8 +201,29 @@ public class AgentScopeRuntimeAdapter {
         result.setInputTokens(recorder.inputTokensOrEstimate(inputText));
         result.setOutputTokens(recorder.outputTokensOrEstimate(recorder.answer()));
         result.setModelCallCount(recorder.getModelCallCount());
-        result.setStatus(recorder.isConfirmationRequired() ? "WAITING_APPROVAL" : "COMPLETED");
+        result.setStatus(recorder.isConfirmationRequired() || context.isPlatformApprovalRequired()
+                ? "WAITING_APPROVAL"
+                : "COMPLETED");
         return result;
+    }
+
+    private AgentRunResult buildInterruptedResult(RuntimeContext context,
+                                                  AgentScopeTraceRecorder recorder,
+                                                  String inputText) {
+        AgentRunResult result = buildResult(context, recorder, inputText);
+        result.setStatus("WAITING_APPROVAL");
+        return result;
+    }
+
+    private boolean hasCause(Throwable throwable, Class<? extends Throwable> expectedType) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (expectedType.isInstance(current)) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private void validateModel(RuntimeContext context) {

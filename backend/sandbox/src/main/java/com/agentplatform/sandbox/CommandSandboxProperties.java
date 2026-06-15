@@ -71,48 +71,14 @@ public class CommandSandboxProperties {
      * 明确禁止出现的片段。
      */
     private List<String> deniedFragments = new ArrayList<>(List.of(
-            "rm ",
-            "rm -",
-            "rmdir",
-            "del ",
-            "erase ",
-            "format",
-            "shutdown",
-            "reboot",
-            "git reset --hard",
-            "git clean",
-            "curl |",
-            "wget |",
-            "iwr ",
-            "invoke-webrequest",
-            "invoke-expression",
-            "powershell -encodedcommand",
-            "-encodedcommand",
-            "start-process",
-            "chmod -r",
-            "chown -r"
+
     ));
 
     /**
      * 不允许启动的交互式程序。
      */
     private List<String> deniedInteractiveCommands = new ArrayList<>(List.of(
-            "vim",
-            "vi",
-            "nano",
-            "less",
-            "more",
-            "top",
-            "htop",
-            "ssh",
-            "mysql",
-            "psql",
-            "redis-cli",
-            "node",
-            "python",
-            "python3",
-            "powershell",
-            "cmd"
+
     ));
 
     public boolean isEnabled() {

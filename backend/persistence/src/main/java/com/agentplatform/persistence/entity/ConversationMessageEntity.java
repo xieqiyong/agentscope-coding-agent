@@ -42,6 +42,6 @@ public class ConversationMessageEntity extends BaseEntity {
      * 消息扩展信息 JSON
      */
     @Lob
-    @Column(name = "metadata_json", nullable = true)
+    @Column(name = "metadata_json", nullable = true, columnDefinition = "LONGTEXT")
     private String metadataJson;
 }

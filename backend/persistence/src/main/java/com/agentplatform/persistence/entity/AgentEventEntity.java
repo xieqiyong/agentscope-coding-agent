@@ -42,7 +42,7 @@ public class AgentEventEntity extends BaseEntity {
      * 事件元数据 JSON
      */
     @Lob
-    @Column(name = "metadata_json", nullable = true)
+    @Column(name = "metadata_json", nullable = true, columnDefinition = "LONGTEXT")
     private String metadataJson;
     /**
      * 距离执行开始的毫秒数
