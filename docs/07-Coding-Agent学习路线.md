@@ -13,9 +13,9 @@
 | 5 | SessionKey / AgentState | 已完成第一轮 | 学习 AgentScope 内部 checkpoint 和 session 状态恢复 |
 | 6 | 运行状态机 | 已完成第一轮 | 建模 RUNNING、WAITING_APPROVAL、COMPLETED、FAILED、TIMEOUT、CANCELLED 等状态 |
 | 7 | 记忆系统产品化 | 已完成第二轮 | 已完成 ACTIVE 注入、规则捕获、审核接口和前端管理，后续补语义抽取和沙箱联动 |
-| 8 | 权限治理 | 未开始 | 给文件、命令、网络工具建立 allow / ask / deny 策略 |
+| 8 | 权限治理 | 已完成第一轮 | 已接入 AgentScope PermissionEngine、工具确认事件、审批落库和确认后恢复 |
 | 9 | 命令级沙箱 | 未开始 | 实现 Bash、超时、stdout/stderr 流式、后台任务和危险命令拦截 |
-| 10 | Checkpoint + Pending Action | 未开始 | 用户确认后从挂起点继续，异常后能恢复或补偿 |
+| 10 | Checkpoint + Pending Action | 已完成工具审批恢复第一轮 | 用户确认后从挂起点继续，异常后能恢复或补偿 |
 | 11 | 回滚和补偿 | 未开始 | 文件快照、多文件事务、run 失败后的恢复策略 |
 | 12 | 多 Agent / 计划型 Agent | 未开始 | 学习 Plan、Observe、Execute、Review 等 Agent 形态 |
 | 13 | 产品化治理 | 未开始 | 审计、限流、fallback、workspace 管理和前端体验打磨 |
@@ -215,13 +215,15 @@ docs/12-长期记忆产品化实现记录.md
 
 ### 8. 权限治理
 
-要学习和实现：
+已完成第一轮：
 
-- 工具权限分级。
-- 文件权限。
-- 命令权限。
-- 网络权限。
-- 用户确认事件。
+- 接入 AgentScope `PermissionContextState`。
+- 通过 `PermissionRule` 把直接写入工具设置为 `ASK`。
+- 读取类工具默认放行。
+- `RequireUserConfirmEvent` 翻译为平台 `CONFIRMATION_REQUIRED`。
+- 审批请求写入 `approval_requests`。
+- 前端显示工具确认卡片。
+- 用户批准或拒绝后，通过 `ConfirmResult` 恢复 AgentScope pending tool。
 
 策略模型：
 
@@ -229,6 +231,12 @@ docs/12-长期记忆产品化实现记录.md
 allow: 直接执行
 ask: 请求用户确认
 deny: 直接拒绝
+```
+
+详见：
+
+```text
+docs/13-工具权限治理实现记录.md
 ```
 
 ### 9. 命令级沙箱
@@ -296,8 +304,8 @@ SessionKey / AgentState ✅
 Agent 请求完整生命周期 ✅
 运行状态机 ✅
 记忆系统产品化 ✅
-权限治理
+权限治理第一轮 ✅
 命令沙箱
-Checkpoint 恢复
+Checkpoint 工具审批恢复第一轮 ✅
 多 Agent 编排
 ```

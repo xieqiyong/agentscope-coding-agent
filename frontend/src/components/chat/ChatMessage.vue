@@ -62,6 +62,8 @@
         class="confirmation-inline"
         :confirmation="message.confirmation"
         @review="$emit('reviewConfirmation', $event)"
+        @approve="$emit('approveConfirmation', $event)"
+        @reject="$emit('rejectConfirmation', $event)"
       />
 
       <!-- 助手消息：Markdown 渲染 -->
@@ -110,6 +112,8 @@ const props = defineProps<{
 
 defineEmits<{
   reviewConfirmation: [confirmation: Confirmation]
+  approveConfirmation: [confirmation: Confirmation]
+  rejectConfirmation: [confirmation: Confirmation]
 }>()
 
 const toolsExpanded = ref(false)

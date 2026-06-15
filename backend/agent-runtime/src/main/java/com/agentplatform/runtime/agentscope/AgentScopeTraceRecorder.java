@@ -6,6 +6,7 @@ import com.agentplatform.runtime.model.RuntimeEventSink;
 import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.event.ModelCallEndEvent;
 import io.agentscope.core.event.ModelCallStartEvent;
+import io.agentscope.core.event.RequireUserConfirmEvent;
 import io.agentscope.core.event.TextBlockDeltaEvent;
 import io.agentscope.core.model.ChatUsage;
 
@@ -25,6 +26,7 @@ class AgentScopeTraceRecorder {
     private int modelCallCount;
     private int inputTokens;
     private int outputTokens;
+    private boolean confirmationRequired;
 
     AgentScopeTraceRecorder(RuntimeContext context, RuntimeEventSink sink) {
         this.context = context;
@@ -44,6 +46,9 @@ class AgentScopeTraceRecorder {
         if (event instanceof TextBlockDeltaEvent textBlockDeltaEvent && textBlockDeltaEvent.getDelta() != null) {
             answer.append(textBlockDeltaEvent.getDelta());
         }
+        if (event instanceof RequireUserConfirmEvent) {
+            confirmationRequired = true;
+        }
 
         boolean exposeThinking = Boolean.TRUE.equals(context.getCommand().getTraceThinkingContent());
         List<RuntimeEvent> events = translator.translate(event, context, elapsedMs(), exposeThinking);
@@ -58,6 +63,10 @@ class AgentScopeTraceRecorder {
 
     int getModelCallCount() {
         return modelCallCount;
+    }
+
+    boolean isConfirmationRequired() {
+        return confirmationRequired;
     }
 
     int inputTokensOrEstimate(String input) {
@@ -87,4 +96,3 @@ class AgentScopeTraceRecorder {
         return (System.nanoTime() - startedNanos) / 1_000_000;
     }
 }
-

@@ -9,15 +9,19 @@ import com.agentplatform.runtime.model.RuntimeContext;
 import com.agentplatform.runtime.model.RuntimeEvent;
 import com.agentplatform.runtime.model.RuntimeEventSink;
 import com.agentplatform.runtime.model.RuntimeEventType;
+import com.agentplatform.runtime.service.ToolApprovalService;
 import com.agentplatform.runtime.tool.CodingAgentWebSearchTools;
 import com.agentplatform.runtime.tool.CodingAgentWorkspaceTools;
 import com.agentplatform.sandbox.PatchApplyService;
 import com.agentplatform.sandbox.SandboxPathResolver;
 import io.agentscope.core.ReActAgent;
+import io.agentscope.core.event.ConfirmResult;
 import io.agentscope.core.message.AssistantMessage;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.UserMessage;
 import io.agentscope.core.model.OpenAIChatModel;
+import io.agentscope.core.permission.PermissionContextState;
+import io.agentscope.core.permission.PermissionRule;
 import io.agentscope.core.tool.Toolkit;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
@@ -51,6 +55,9 @@ public class AgentScopeRuntimeAdapter {
     @Resource
     private AgentScopeSessionManager sessionManager;
 
+    @Resource
+    private AgentScopePermissionContextFactory permissionContextFactory;
+
     public AgentRunResult execute(RuntimeContext context, RuntimeEventSink sink) {
         validateModel(context);
         long startedNanos = System.nanoTime();
@@ -58,12 +65,99 @@ public class AgentScopeRuntimeAdapter {
         AgentScopeSessionBinding sessionBinding = sessionManager.bind(context);
         emitSessionLoaded(context, sink, sessionBinding, elapsedMs(startedNanos));
 
+        try (ReActAgent agent = buildAgent(context, sessionBinding)) {
+            AgentScopeTraceRecorder recorder = new AgentScopeTraceRecorder(context, sink);
+            List<Msg> inputMessages = buildInputMessages(context);
+            agent.streamEvents(inputMessages)
+                    .doOnNext(recorder::record)
+                    .collectList()
+                    .block(Duration.ofSeconds(context.getTimeoutSeconds()));
+
+            return buildResult(context, recorder, inputText(context));
+        } catch (Exception e) {
+            throw new RuntimeException("AgentScope 执行失败: " + e.getMessage(), e);
+        }
+    }
+
+    public AgentRunResult resumeAfterApproval(RuntimeContext context,
+                                              ToolApprovalService.ToolApprovalPayload payload,
+                                              boolean approved,
+                                              RuntimeEventSink sink) {
+        validateModel(context);
+        long startedNanos = System.nanoTime();
+
+        AgentScopeSessionBinding sessionBinding = sessionManager.bind(context);
+        if (!sessionBinding.isEnabled()) {
+            throw new BusinessException(409, "AgentScope Session 未启用，无法恢复等待审批的工具调用");
+        }
+        emitSessionLoaded(context, sink, sessionBinding, elapsedMs(startedNanos));
+
+        try (ReActAgent agent = buildAgent(context, sessionBinding)) {
+            AgentScopeTraceRecorder recorder = new AgentScopeTraceRecorder(context, sink);
+            List<Msg> inputMessages = buildConfirmMessages(payload, approved);
+            agent.streamEvents(inputMessages)
+                    .doOnNext(recorder::record)
+                    .collectList()
+                    .block(Duration.ofSeconds(context.getTimeoutSeconds()));
+
+            return buildResult(context, recorder, "CONFIRM_RESULT: " + approved);
+        } catch (Exception e) {
+            throw new RuntimeException("AgentScope 审批恢复失败: " + e.getMessage(), e);
+        }
+    }
+
+    private ReActAgent buildAgent(RuntimeContext context, AgentScopeSessionBinding sessionBinding) {
+        PermissionContextState permissionContext = permissionContextFactory.build();
+        ReActAgent.Builder agentBuilder = ReActAgent.builder()
+                .name("coding-agent")
+                .description("带工作区沙箱工具的编码智能体")
+                .sysPrompt(context.getSystemPrompt())
+                .model(buildModel(context))
+                .toolkit(buildToolkit(context))
+                .permissionContext(permissionContext)
+                .maxIters(context.getMaxIterations());
+
+        if (sessionBinding.isEnabled()) {
+            agentBuilder.session(sessionBinding.getSession())
+                    .sessionKey(sessionBinding.getSessionKey())
+                    .enablePendingToolRecovery(true);
+        }
+        ReActAgent agent = agentBuilder.build();
+        applyRuntimePermissionRules(agent, permissionContext);
+        return agent;
+    }
+
+    private void applyRuntimePermissionRules(ReActAgent agent, PermissionContextState permissionContext) {
+        if (agent == null || permissionContext == null) {
+            return;
+        }
+        for (List<PermissionRule> rules : permissionContext.getAskRules().values()) {
+            for (PermissionRule rule : rules) {
+                agent.getPermissionEngine().addRule(rule);
+            }
+        }
+        for (List<PermissionRule> rules : permissionContext.getDenyRules().values()) {
+            for (PermissionRule rule : rules) {
+                agent.getPermissionEngine().addRule(rule);
+            }
+        }
+        for (List<PermissionRule> rules : permissionContext.getAllowRules().values()) {
+            for (PermissionRule rule : rules) {
+                agent.getPermissionEngine().addRule(rule);
+            }
+        }
+    }
+
+    private Toolkit buildToolkit(RuntimeContext context) {
         Toolkit toolkit = new Toolkit();
         CodingAgentWorkspaceTools workspaceTools =
                 new CodingAgentWorkspaceTools(context, sandboxPathResolver, patchRepository, patchFileRepository, patchApplyService);
         toolkit.registerTool(workspaceTools);
         toolkit.registerTool(new CodingAgentWebSearchTools());
+        return toolkit;
+    }
 
+    private OpenAIChatModel buildModel(RuntimeContext context) {
         String modelBaseUrl = normalizeModelBaseUrl(context.getModelBaseUrl());
         OpenAIChatModel.Builder modelBuilder = OpenAIChatModel.builder()
                 .baseUrl(modelBaseUrl)
@@ -72,42 +166,29 @@ public class AgentScopeRuntimeAdapter {
         if (StringUtils.hasText(context.getApiKey())) {
             modelBuilder.apiKey(context.getApiKey());
         }
+        return modelBuilder.build();
+    }
 
-        ReActAgent.Builder agentBuilder = ReActAgent.builder()
-                .name("coding-agent")
-                .description("带工作区沙箱工具的编码智能体")
-                .sysPrompt(context.getSystemPrompt())
-                .model(modelBuilder.build())
-                .toolkit(toolkit)
-                .maxIters(context.getMaxIterations());
+    private List<Msg> buildConfirmMessages(ToolApprovalService.ToolApprovalPayload payload, boolean approved) {
+        ConfirmResult confirmResult = new ConfirmResult(approved, payload.toolCall());
+        Msg message = UserMessage.builder()
+                .textContent(approved ? "用户已批准上一次工具调用。" : "用户已拒绝上一次工具调用。")
+                .metadata(Map.of(Msg.METADATA_CONFIRM_RESULTS, List.of(confirmResult)))
+                .build();
+        return List.of(message);
+    }
 
-        if (sessionBinding.isEnabled()) {
-            agentBuilder.session(sessionBinding.getSession())
-                    .sessionKey(sessionBinding.getSessionKey())
-                    .enablePendingToolRecovery(true);
-        }
-
-        try (ReActAgent agent = agentBuilder.build()) {
-            AgentScopeTraceRecorder recorder = new AgentScopeTraceRecorder(context, sink);
-            List<Msg> inputMessages = buildInputMessages(context);
-            agent.streamEvents(inputMessages)
-                    .doOnNext(recorder::record)
-                    .collectList()
-                    .block(Duration.ofSeconds(context.getTimeoutSeconds()));
-
-            AgentRunResult result = new AgentRunResult();
-            result.setRunId(context.getRunId());
-            result.setConversationId(context.getConversationId());
-            result.setTraceId(context.getTraceId());
-            result.setAnswer(recorder.answer());
-            result.setInputTokens(recorder.inputTokensOrEstimate(inputText(context)));
-            result.setOutputTokens(recorder.outputTokensOrEstimate(recorder.answer()));
-            result.setModelCallCount(recorder.getModelCallCount());
-            result.setStatus("COMPLETED");
-            return result;
-        } catch (Exception e) {
-            throw new RuntimeException("AgentScope 执行失败: " + e.getMessage(), e);
-        }
+    private AgentRunResult buildResult(RuntimeContext context, AgentScopeTraceRecorder recorder, String inputText) {
+        AgentRunResult result = new AgentRunResult();
+        result.setRunId(context.getRunId());
+        result.setConversationId(context.getConversationId());
+        result.setTraceId(context.getTraceId());
+        result.setAnswer(recorder.answer());
+        result.setInputTokens(recorder.inputTokensOrEstimate(inputText));
+        result.setOutputTokens(recorder.outputTokensOrEstimate(recorder.answer()));
+        result.setModelCallCount(recorder.getModelCallCount());
+        result.setStatus(recorder.isConfirmationRequired() ? "WAITING_APPROVAL" : "COMPLETED");
+        return result;
     }
 
     private void validateModel(RuntimeContext context) {

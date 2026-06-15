@@ -2,11 +2,15 @@
   <div class="confirmation-card">
     <div class="confirm-header">
       <i class="pi pi-exclamation-circle" style="color: var(--warning);"></i>
-      <span class="confirm-title">提议的修改</span>
+      <span class="confirm-title">{{ title }}</span>
       <Tag :value="confirmation.riskLevel" :severity="riskSeverity" />
     </div>
     <p class="confirm-summary">{{ confirmation.summary }}</p>
-    <div class="confirm-files">
+    <div v-if="confirmation.kind === 'TOOL_PERMISSION'" class="confirm-tool">
+      <span class="tool-name">{{ confirmation.toolName }}</span>
+      <span v-if="confirmation.toolCallId" class="tool-id">{{ confirmation.toolCallId }}</span>
+    </div>
+    <div v-else class="confirm-files">
       <span v-for="file in confirmation.files" :key="file.path" class="file-badge">
         <i :class="fileChangeIcon(file.changeType)" style="font-size: 0.7rem;"></i>
         {{ file.path }}
@@ -14,7 +18,11 @@
       </span>
     </div>
     <div class="confirm-actions">
-      <Button label="查看 Diff" icon="pi pi-eye" size="small" @click="$emit('review', confirmation)" />
+      <template v-if="confirmation.kind === 'TOOL_PERMISSION'">
+        <Button label="拒绝" icon="pi pi-times" size="small" severity="danger" outlined @click="$emit('reject', confirmation)" />
+        <Button label="批准执行" icon="pi pi-check" size="small" severity="success" @click="$emit('approve', confirmation)" />
+      </template>
+      <Button v-else label="查看 Diff" icon="pi pi-eye" size="small" @click="$emit('review', confirmation)" />
     </div>
   </div>
 </template>
@@ -31,7 +39,11 @@ const props = defineProps<{
 
 defineEmits<{
   review: [confirmation: Confirmation]
+  approve: [confirmation: Confirmation]
+  reject: [confirmation: Confirmation]
 }>()
+
+const title = computed(() => props.confirmation.kind === 'TOOL_PERMISSION' ? '工具执行确认' : '提议的修改')
 
 const riskSeverity = computed(() => {
   const map: Record<RiskLevel, string> = {
@@ -85,6 +97,27 @@ function fileChangeIcon(type: string): string {
   flex-wrap: wrap;
   gap: var(--spacing-xs);
   margin-bottom: var(--spacing-md);
+}
+
+.confirm-tool {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+}
+
+.tool-name,
+.tool-id {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  padding: 3px 8px;
+}
+
+.tool-id {
+  color: var(--text-muted);
 }
 
 .file-badge {

@@ -106,6 +106,11 @@ export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
 
 export interface Confirmation {
   patchId: string
+  kind?: 'PATCH' | 'TOOL_PERMISSION'
+  approvalId?: string
+  runId?: number | string | null
+  toolName?: string
+  toolCallId?: string
   files: PatchFile[]
   diff: string
   riskLevel: RiskLevel

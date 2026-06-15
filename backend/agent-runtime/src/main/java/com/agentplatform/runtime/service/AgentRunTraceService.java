@@ -4,6 +4,7 @@ import com.agentplatform.persistence.entity.AgentEventEntity;
 import com.agentplatform.persistence.repository.AgentEventRepository;
 import com.agentplatform.runtime.model.RuntimeEvent;
 import com.agentplatform.runtime.model.RuntimeEventSink;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,6 +23,9 @@ public class AgentRunTraceService {
 
     @Resource
     private AgentEventRepository agentEventRepository;
+
+    @Resource
+    private ObjectMapper objectMapper;
 
     public void recordAndForward(RuntimeEvent event, RuntimeEventSink downstream) {
         if (event == null) {
@@ -60,33 +64,13 @@ public class AgentRunTraceService {
         if (metadata == null || metadata.isEmpty()) {
             return "{}";
         }
-        StringBuilder sb = new StringBuilder("{");
-        boolean first = true;
-        for (Map.Entry<String, Object> entry : metadata.entrySet()) {
-            if (!first) {
-                sb.append(',');
-            }
-            first = false;
-            sb.append('"').append(escape(entry.getKey())).append('"').append(':');
-            Object value = entry.getValue();
-            if (value instanceof Number || value instanceof Boolean) {
-                sb.append(value);
-            } else {
-                sb.append('"').append(escape(String.valueOf(value))).append('"');
-            }
+        try {
+            return objectMapper.writeValueAsString(metadata);
+        } catch (Exception e) {
+            // 中文注释：metadata 只是调试辅助字段，序列化失败时降级为空对象，不影响事件主记录。
+            log.warn("运行事件 metadata 序列化失败，已降级为空对象，原因={}", e.getMessage());
+            return "{}";
         }
-        sb.append('}');
-        return sb.toString();
-    }
-
-    private String escape(String text) {
-        if (text == null) {
-            return "";
-        }
-        return text.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\r", "\\r")
-                .replace("\n", "\\n");
     }
 
     private long elapsedMs(long startedNanos) {

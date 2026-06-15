@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import { useRuntimeStore } from '@/stores/runtime'
+import type { Confirmation } from '@/types'
 import type { RuntimeEvent, RuntimeEventType } from '@/types/events'
 
 export function useSse() {
@@ -38,71 +39,101 @@ export function useSse() {
     runtimeStore.startAgentRun()
 
     try {
-      const response = await fetch('/api/agent-runtime/chat-stream', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'text/event-stream',
-        },
-        body: JSON.stringify(body),
-        signal: abortController.value.signal,
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-      }
-
-      const reader = response.body?.getReader()
-      if (!reader) {
-        throw new Error('无法获取 SSE 流')
-      }
-
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let currentEventType = ''
-      let currentData = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          if (line.startsWith('event:')) {
-            currentEventType = line.slice(6).trim()
-          } else if (line.startsWith('data:')) {
-            currentData += line.slice(5).trim()
-          } else if (line.trim() === '') {
-            // 空行 = 事件分隔符
-            if (currentEventType && currentData) {
-              try {
-                const event: RuntimeEvent = JSON.parse(currentData)
-                dispatchEvent(currentEventType as RuntimeEventType, event)
-              } catch {
-                // 非 JSON data，忽略
-              }
-            }
-            currentEventType = ''
-            currentData = ''
-          }
-        }
-      }
+      await consumeStream('/api/agent-runtime/chat-stream', body)
     } catch (e: any) {
-      if (e.name === 'AbortError') {
-        // 用户取消
-      } else {
-        const msg = e.message || 'SSE 连接失败'
-        error.value = msg
-        runtimeStore.recordWarning(msg)
-      }
+      handleStreamError(e)
     } finally {
       runtimeStore.endAgentRun()
       chatStore.finalizeStreamingMessage()
     }
+  }
+
+  async function respondApproval(confirmation: Confirmation, approved: boolean) {
+    if (!confirmation.approvalId) return
+    error.value = null
+    abortController.value = new AbortController()
+    runtimeStore.startAgentRun()
+
+    try {
+      await consumeStream('/api/agent-runtime/approval-stream', {
+        approvalRequestId: Number(confirmation.approvalId),
+        runId: confirmation.runId == null ? undefined : Number(confirmation.runId),
+        approved,
+        userId: '1',
+        timeoutSeconds: 86400,
+      })
+      chatStore.resolveConfirmation(confirmation.patchId)
+    } catch (e: any) {
+      handleStreamError(e)
+    } finally {
+      runtimeStore.endAgentRun()
+      chatStore.finalizeStreamingMessage()
+    }
+  }
+
+  async function consumeStream(url: string, body: unknown) {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+      },
+      body: JSON.stringify(body),
+      signal: abortController.value?.signal,
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('无法获取 SSE 流')
+    }
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let currentEventType = ''
+    let currentData = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (line.startsWith('event:')) {
+          currentEventType = line.slice(6).trim()
+        } else if (line.startsWith('data:')) {
+          currentData += line.slice(5).trim()
+        } else if (line.trim() === '') {
+          // 空行 = 事件分隔符
+          if (currentEventType && currentData) {
+            try {
+              const event: RuntimeEvent = JSON.parse(currentData)
+              dispatchEvent(currentEventType as RuntimeEventType, event)
+            } catch {
+              // 非 JSON data，忽略
+            }
+          }
+          currentEventType = ''
+          currentData = ''
+        }
+      }
+    }
+  }
+
+  function handleStreamError(e: any) {
+    if (e.name === 'AbortError') {
+      return
+    }
+    const msg = e.message || 'SSE 连接失败'
+    error.value = msg
+    runtimeStore.recordWarning(msg)
   }
 
   function dispatchEvent(type: RuntimeEventType, event: RuntimeEvent) {
@@ -174,6 +205,7 @@ export function useSse() {
   return {
     error,
     start,
+    respondApproval,
     abort,
   }
 }

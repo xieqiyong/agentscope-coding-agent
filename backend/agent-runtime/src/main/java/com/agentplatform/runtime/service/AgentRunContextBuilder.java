@@ -109,7 +109,8 @@ public class AgentRunContextBuilder {
                 + "4. 多文件任务必须拆成多个工具调用，不要让用户手动复制粘贴文件内容。\n"
                 + "5. propose_patch 和 propose_file_change 只保存审核提案，不会直接写入磁盘；只有用户明确要求审核、修改敏感文件或高风险变更时才使用。\n"
                 + "6. 只有 Write、write_file、Edit 或 apply_patch 返回成功后，才能声称文件已经创建或修改完成。\n"
-                + "7. Bash、Notebook、子 Agent、任务编排暂未开放，不要假装已经执行这些工具。";
+                + "7. 直接写入工具可能会被平台权限治理暂停并要求用户确认；如果工具结果显示被拒绝或等待确认，不要声称修改已经完成。\n"
+                + "8. Bash、Notebook、子 Agent、任务编排暂未开放，不要假装已经执行这些工具。";
 
         String memoryText = memoryContextAssembler.assemblePromptSection(memories);
 

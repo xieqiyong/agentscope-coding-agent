@@ -4,8 +4,10 @@ import com.agentplatform.runtime.model.RuntimeContext;
 import com.agentplatform.runtime.model.RuntimeEvent;
 import com.agentplatform.runtime.model.RuntimeEventType;
 import io.agentscope.core.event.*;
+import io.agentscope.core.message.ToolUseBlock;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -71,6 +73,12 @@ class AgentScopeEventTranslator {
         } else if (event instanceof ExceedMaxItersEvent e) {
             events.add(of(context, RuntimeEventType.RUNTIME_WARNING, "超过最大循环次数", null,
                     Map.of("currentIter", e.getCurrentIter(), "maxIters", e.getMaxIters()), elapsedMs));
+        } else if (event instanceof RequireUserConfirmEvent e) {
+            events.add(of(context, RuntimeEventType.CONFIRMATION_REQUIRED, "需要用户确认",
+                    buildConfirmContent(e.getToolCalls()), requireConfirmMetadata(e), elapsedMs));
+        } else if (event instanceof UserConfirmResultEvent e) {
+            events.add(of(context, RuntimeEventType.CONFIRMATION_RESULT, "用户确认结果",
+                    "用户确认结果已返回 AgentScope", userConfirmMetadata(e), elapsedMs));
         } else {
             events.add(translateBySimpleName(event, context, elapsedMs));
         }
@@ -104,6 +112,72 @@ class AgentScopeEventTranslator {
                 event.toString(), Map.of("sourceEvent", simpleName, "eventType", safe(event.getType())), elapsedMs);
     }
 
+    private Map<String, Object> requireConfirmMetadata(RequireUserConfirmEvent event) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("sourceEvent", event.getClass().getSimpleName());
+        metadata.put("requestType", "TOOL_PERMISSION");
+        metadata.put("replyId", safe(event.getReplyId()));
+        metadata.put("toolCalls", toolCalls(event.getToolCalls()));
+        metadata.put("riskLevel", highestRisk(event.getToolCalls()));
+        return metadata;
+    }
+
+    private Map<String, Object> userConfirmMetadata(UserConfirmResultEvent event) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("sourceEvent", event.getClass().getSimpleName());
+        metadata.put("replyId", safe(event.getReplyId()));
+        metadata.put("confirmCount", event.getConfirmResults() != null ? event.getConfirmResults().size() : 0);
+        return metadata;
+    }
+
+    private List<Map<String, Object>> toolCalls(List<ToolUseBlock> blocks) {
+        if (blocks == null || blocks.isEmpty()) {
+            return List.of();
+        }
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (ToolUseBlock block : blocks) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", safe(block.getId()));
+            item.put("name", safe(block.getName()));
+            item.put("input", block.getInput() != null ? block.getInput() : Map.of());
+            item.put("content", safe(block.getContent()));
+            item.put("metadata", block.getMetadata() != null ? block.getMetadata() : Map.of());
+            item.put("state", safe(block.getState()));
+            item.put("riskLevel", classifyRisk(block.getName()));
+            result.add(item);
+        }
+        return result;
+    }
+
+    private String buildConfirmContent(List<ToolUseBlock> blocks) {
+        if (blocks == null || blocks.isEmpty()) {
+            return "AgentScope 请求用户确认工具调用";
+        }
+        if (blocks.size() == 1) {
+            return "AgentScope 请求确认执行工具：" + safe(blocks.get(0).getName());
+        }
+        return "AgentScope 请求确认执行 " + blocks.size() + " 个工具调用";
+    }
+
+    private String highestRisk(List<ToolUseBlock> blocks) {
+        if (blocks == null || blocks.isEmpty()) {
+            return "MEDIUM";
+        }
+        for (ToolUseBlock block : blocks) {
+            if ("HIGH".equals(classifyRisk(block.getName()))) {
+                return "HIGH";
+            }
+        }
+        return "MEDIUM";
+    }
+
+    private String classifyRisk(String toolName) {
+        if ("apply_patch".equals(toolName) || "Edit".equals(toolName)
+                || "write_file".equals(toolName) || "Write".equals(toolName)) {
+            return "HIGH";
+        }
+        return "MEDIUM";
+    }
 
     private Map<String, Object> toolMetadata(Object toolCallId, Object toolName) {
         String callId = safe(toolCallId);
@@ -133,5 +207,4 @@ class AgentScopeEventTranslator {
         return value == null ? "" : String.valueOf(value);
     }
 }
-
 

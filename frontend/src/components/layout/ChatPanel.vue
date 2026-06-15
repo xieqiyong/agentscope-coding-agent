@@ -20,7 +20,12 @@
       </div>
 
       <!-- 消息列表 -->
-      <MessageList v-else @review-confirmation="$emit('reviewConfirmation', $event)" />
+      <MessageList
+        v-else
+        @review-confirmation="$emit('reviewConfirmation', $event)"
+        @approve-confirmation="handleToolApproval($event, true)"
+        @reject-confirmation="handleToolApproval($event, false)"
+      />
     </div>
 
     <!-- 输入栏 -->
@@ -34,6 +39,7 @@ import MessageList from '@/components/chat/MessageList.vue'
 import ChatInput from '@/components/chat/ChatInput.vue'
 import { useChatStore } from '@/stores/chat'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { useSse } from '@/composables/useSse'
 import type { Confirmation } from '@/types'
 
 defineEmits<{
@@ -42,6 +48,7 @@ defineEmits<{
 
 const chatStore = useChatStore()
 const workspaceStore = useWorkspaceStore()
+const sse = useSse()
 const messagesContainer = ref<HTMLElement | null>(null)
 
 // 滚动到底部
@@ -64,6 +71,11 @@ watch(
   () => chatStore.streamingText,
   () => scrollToBottom(),
 )
+
+async function handleToolApproval(confirmation: Confirmation, approved: boolean) {
+  if (confirmation.kind !== 'TOOL_PERMISSION') return
+  await sse.respondApproval(confirmation, approved)
+}
 </script>
 
 <style scoped>

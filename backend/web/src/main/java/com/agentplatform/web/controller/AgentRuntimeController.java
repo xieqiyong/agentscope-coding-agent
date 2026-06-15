@@ -1,5 +1,6 @@
 package com.agentplatform.web.controller;
 
+import com.agentplatform.runtime.model.AgentApprovalCommand;
 import com.agentplatform.runtime.model.AgentRunCommand;
 import com.agentplatform.runtime.model.RuntimeEvent;
 import com.agentplatform.runtime.model.RuntimeEventType;
@@ -45,6 +46,22 @@ public class AgentRuntimeController {
             } catch (Exception e) {
                 sendEvent(emitter, RuntimeEvent.of(null, null, RuntimeEventType.RUN_ERROR,
                         "运行异常", e.getMessage(), Map.of(), 0));
+                emitter.completeWithError(e);
+            }
+        });
+        return emitter;
+    }
+
+    @PostMapping(value = "/approval-stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter approvalStream(@RequestBody AgentApprovalCommand command) {
+        SseEmitter emitter = new SseEmitter(0L);
+        executorService.submit(() -> {
+            try {
+                agentRuntimeService.resumeApprovalStreaming(command, event -> sendEvent(emitter, event));
+                emitter.complete();
+            } catch (Exception e) {
+                sendEvent(emitter, RuntimeEvent.of(null, null, RuntimeEventType.RUN_ERROR,
+                        "审批恢复异常", e.getMessage(), Map.of(), 0));
                 emitter.completeWithError(e);
             }
         });

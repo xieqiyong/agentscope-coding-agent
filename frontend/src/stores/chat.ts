@@ -459,7 +459,9 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function readString(value: unknown): string {
-    return typeof value === 'string' ? value : ''
+    if (typeof value === 'string') return value
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+    return ''
   }
 
   function readNumber(value: unknown): number {
@@ -488,8 +490,37 @@ export const useChatStore = defineStore('chat', () => {
 
   function handleConfirmationRequired(event: RuntimeEvent) {
     const meta = event.metadata || {}
+    if (readString(meta.requestType) === 'TOOL_PERMISSION') {
+      const approvals = Array.isArray(meta.approvalRequests) ? meta.approvalRequests : []
+      const firstApproval = approvals[0] && typeof approvals[0] === 'object'
+        ? approvals[0] as Record<string, unknown>
+        : {}
+      const toolCalls = Array.isArray(meta.toolCalls) ? meta.toolCalls : []
+      const firstToolCall = toolCalls[0] && typeof toolCalls[0] === 'object'
+        ? toolCalls[0] as Record<string, unknown>
+        : {}
+      const approvalId = readString(meta.approvalId) || readString(firstApproval.approvalId)
+      const toolName = readString(firstApproval.toolName) || readString(firstToolCall.name) || '未知工具'
+      const toolCallId = readString(firstApproval.toolCallId) || readString(firstToolCall.id)
+      const confirmation: Confirmation = {
+        patchId: `tool-approval-${approvalId || event.eventId}`,
+        kind: 'TOOL_PERMISSION',
+        approvalId,
+        runId: event.runId,
+        toolName,
+        toolCallId,
+        files: [],
+        diff: '',
+        riskLevel: readRiskLevel(meta.riskLevel || firstApproval.riskLevel || firstToolCall.riskLevel),
+        summary: `Agent 请求执行工具 ${toolName}，需要你确认后继续。`,
+      }
+      addConfirmationMessage(confirmation)
+      return
+    }
+
     const confirmation: Confirmation = {
       patchId: readString(meta.patchId) || event.eventId,
+      kind: 'PATCH',
       files: readPatchFiles(meta.files),
       diff: readString(meta.diff) || event.content || '',
       riskLevel: readRiskLevel(meta.riskLevel),
@@ -645,6 +676,12 @@ export const useChatStore = defineStore('chat', () => {
     )
   }
 
+  function resolveConfirmation(patchId: string) {
+    pendingConfirmations.value = pendingConfirmations.value.filter(
+      (c) => c.patchId !== patchId,
+    )
+  }
+
   /**
    * 兜底检测：扫描本次运行中所有 toolCall 和回答文本，
    * 如果发现有 patch 提案但还没创建确认卡片，就自动补上。
@@ -776,6 +813,7 @@ export const useChatStore = defineStore('chat', () => {
     addUserMessage,
     applyPatch,
     rejectPatch,
+    resolveConfirmation,
     clearSession,
     setActiveConversationId,
     restoreConversationId,

@@ -5,6 +5,8 @@
       :key="msg.id"
       :message="msg"
       @review-confirmation="$emit('reviewConfirmation', $event)"
+      @approve-confirmation="$emit('approveConfirmation', $event)"
+      @reject-confirmation="$emit('rejectConfirmation', $event)"
     />
     <div v-if="chatStore.isStreaming && !lastMessageIsStreaming" class="typing-indicator">
       <span class="dot"></span>
@@ -22,6 +24,8 @@ import type { Confirmation } from '@/types'
 
 defineEmits<{
   reviewConfirmation: [confirmation: Confirmation]
+  approveConfirmation: [confirmation: Confirmation]
+  rejectConfirmation: [confirmation: Confirmation]
 }>()
 
 const chatStore = useChatStore()
