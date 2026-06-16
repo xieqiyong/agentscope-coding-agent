@@ -40,8 +40,28 @@ export interface ChatMessage {
   timestamp: string
   thinking?: ThinkingInfo
   toolCalls?: ToolCallInfo[]
+  plan?: PlanInfo
   confirmation?: Confirmation
   isStreaming?: boolean
+}
+
+export interface PlanInfo {
+  title: string
+  summary: string
+  riskLevel: RiskLevel
+  steps: PlanStep[]
+  acceptanceCriteria: string[]
+  expectedTools: string[]
+  requiresApproval: boolean
+}
+
+export interface PlanStep {
+  id: string
+  title: string
+  description?: string
+  status: 'pending' | 'in_progress' | 'completed' | 'failed'
+  agentName?: string
+  tools: string[]
 }
 
 export interface ThinkingInfo {

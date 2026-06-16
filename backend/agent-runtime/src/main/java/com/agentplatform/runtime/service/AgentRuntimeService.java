@@ -19,6 +19,7 @@ import com.agentplatform.runtime.model.RuntimeContext;
 import com.agentplatform.runtime.model.RuntimeEvent;
 import com.agentplatform.runtime.model.RuntimeEventSink;
 import com.agentplatform.runtime.model.RuntimeEventType;
+import com.agentplatform.runtime.multiagent.MultiAgentOrchestrator;
 import com.agentplatform.sandbox.CommandExecutionResult;
 import com.agentplatform.sandbox.CommandSandboxService;
 import jakarta.annotation.Resource;
@@ -70,8 +71,12 @@ public class AgentRuntimeService {
     @Resource
     private CommandSandboxService commandSandboxService;
 
+    @Resource
+    private MultiAgentOrchestrator multiAgentOrchestrator;
+
     public AgentRunResult executeStreaming(AgentRunCommand command, RuntimeEventSink clientSink) {
         validateCommand(command);
+        normalizeRunMode(command);
         long started = System.nanoTime();
         String traceId = UUID.randomUUID().toString();
 
@@ -104,6 +109,45 @@ public class AgentRuntimeService {
                             "memoryCount", context.getActiveMemories().size(),
                             "model", safe(context.getModelName())
                     ), elapsedMs(started));
+
+            if (isPlanOnly(command)) {
+                AgentRunResult result = multiAgentOrchestrator.planOnly(context, persistedSink);
+                saveAssistantMessage(conversation.getId(), result.getAnswer());
+                lifecycleService.completeRun(run.getId(), result);
+                emit(persistedSink, run.getId(), traceId, RuntimeEventType.RUN_FINISHED, "运行完成",
+                        "PlannerAgent 已完成计划生成", Map.of(
+                                "status", AgentRunStatus.COMPLETED.name(),
+                                "conversationId", conversation.getId(),
+                                "runMode", "PLAN_ONLY"
+                        ), elapsedMs(started));
+                result.setStatus("COMPLETED");
+                return result;
+            }
+
+            if (isPlanExecute(command)) {
+                AgentRunResult result = multiAgentOrchestrator.planAndExecute(context, persistedSink);
+                if (AgentRunStatus.WAITING_APPROVAL.name().equals(result.getStatus())) {
+                    return result;
+                }
+                saveAssistantMessage(conversation.getId(), result.getAnswer());
+                MemoryCaptureResult memoryCaptureResult = captureMemory(command, conversation.getId(), userMessage.getId(), result.getAnswer());
+                lifecycleService.completeRun(run.getId(), result);
+                emit(persistedSink, run.getId(), traceId, RuntimeEventType.RUN_FINISHED, "运行完成",
+                        "ExecutorAgent 已完成计划执行", Map.of(
+                                "status", AgentRunStatus.COMPLETED.name(),
+                                "inputTokens", result.getInputTokens(),
+                                "outputTokens", result.getOutputTokens(),
+                                "modelCallCount", result.getModelCallCount(),
+                                "memoryCaptured", memoryCaptureResult.captured(),
+                                "memoryActivated", memoryCaptureResult.activated(),
+                                "memoryPending", memoryCaptureResult.pending(),
+                                "memoryConflicts", memoryCaptureResult.conflicts(),
+                                "conversationId", conversation.getId(),
+                                "runMode", "PLAN_EXECUTE"
+                        ), elapsedMs(started));
+                result.setStatus("COMPLETED");
+                return result;
+            }
 
             AgentRunResult result = agentScopeRuntimeAdapter.execute(context, persistedSink);
             if (AgentRunStatus.WAITING_APPROVAL.name().equals(result.getStatus())) {
@@ -233,6 +277,30 @@ public class AgentRuntimeService {
         if (!StringUtils.hasText(command.getUserId())) {
             command.setUserId("default");
         }
+    }
+
+    private void normalizeRunMode(AgentRunCommand command) {
+        String message = command.getMessage() != null ? command.getMessage().trim() : "";
+        if (message.startsWith("/plan")) {
+            command.setRunMode("PLAN_ONLY");
+            String task = message.substring("/plan".length()).trim();
+            if (!StringUtils.hasText(task)) {
+                throw new BusinessException(400, "/plan 后面需要写清楚要规划的任务");
+            }
+            command.setMessage(task);
+            return;
+        }
+        if (!StringUtils.hasText(command.getRunMode())) {
+            command.setRunMode("SINGLE_AGENT");
+        }
+    }
+
+    private boolean isPlanOnly(AgentRunCommand command) {
+        return "PLAN_ONLY".equalsIgnoreCase(command.getRunMode());
+    }
+
+    private boolean isPlanExecute(AgentRunCommand command) {
+        return "PLAN_EXECUTE".equalsIgnoreCase(command.getRunMode());
     }
 
     private void validateApprovalCommand(AgentApprovalCommand command) {

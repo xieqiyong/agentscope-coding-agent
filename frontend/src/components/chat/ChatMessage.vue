@@ -66,6 +66,13 @@
         @reject="$emit('rejectConfirmation', $event)"
       />
 
+      <PlanCard
+        v-if="message.plan"
+        :plan="message.plan"
+        :disabled="chatStore.isStreaming"
+        @execute="$emit('executePlan', $event)"
+      />
+
       <!-- 助手消息：Markdown 渲染 -->
       <div
         v-if="message.role === 'assistant' && hasAssistantContent"
@@ -104,7 +111,9 @@ import { markedHighlight } from 'marked-highlight'
 import hljs from 'highlight.js'
 import ToolCallCard from './ToolCallCard.vue'
 import ConfirmationCard from './ConfirmationCard.vue'
-import type { ChatMessage, ToolCallInfo, Confirmation } from '@/types'
+import PlanCard from './PlanCard.vue'
+import { useChatStore } from '@/stores/chat'
+import type { ChatMessage, ToolCallInfo, Confirmation, PlanInfo } from '@/types'
 
 const props = defineProps<{
   message: ChatMessage
@@ -114,8 +123,10 @@ defineEmits<{
   reviewConfirmation: [confirmation: Confirmation]
   approveConfirmation: [confirmation: Confirmation]
   rejectConfirmation: [confirmation: Confirmation]
+  executePlan: [plan: PlanInfo]
 }>()
 
+const chatStore = useChatStore()
 const toolsExpanded = ref(false)
 const thinkingExpanded = ref(false)
 const copied = ref(false)

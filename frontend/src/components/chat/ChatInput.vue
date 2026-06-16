@@ -105,6 +105,7 @@ function onKeydown(e: KeyboardEvent) {
 async function send() {
   const text = inputText.value.trim()
   if (!text || !canSend.value) return
+  const command = parseSlashCommand(text)
 
   chatStore.addUserMessage(text)
   inputText.value = ''
@@ -132,7 +133,8 @@ async function send() {
   sse.start({
     workspaceId: Number(ws.id),
     conversationId: chatStore.lastConversationId ?? undefined,
-    message: text,
+    message: command.message,
+    runMode: command.runMode,
     agentId: 1,
     userId: '1',
     timeoutSeconds: 86400,
@@ -140,6 +142,18 @@ async function send() {
     modelName,
     apiKey,
   })
+}
+
+function parseSlashCommand(text: string): { message: string; runMode?: string } {
+  const trimmed = text.trim()
+  if (trimmed.startsWith('/plan')) {
+    const task = trimmed.slice('/plan'.length).trim()
+    return {
+      message: task || trimmed,
+      runMode: task ? 'PLAN_ONLY' : undefined,
+    }
+  }
+  return { message: trimmed }
 }
 
 function autoResize() {

@@ -19,7 +19,7 @@
 | 11 | 平台级 ToolGuard / Interrupt | 已完成第一轮 | Bash 已走平台 ASK、approval-stream 直接执行挂起工具 |
 | 12 | fallback 与治理增强 | 未开始 | 模型 fallback、工具 fallback、运行失败恢复 |
 | 13 | 回滚和补偿 | 未开始 | 文件快照、多文件事务、run 失败后的恢复策略 |
-| 14 | 多 Agent / 计划型 Agent | 未开始 | 学习 Plan、Observe、Execute、Review 等 Agent 形态 |
+| 14 | 多 Agent / 计划型 Agent | 已完成第二轮雏形 | 已接入 PLAN_ONLY、PlannerAgent、计划卡片执行和 ExecutorAgent |
 | 15 | 产品化治理 | 未开始 | 审计、限流、fallback、workspace 管理和前端体验打磨 |
 
 ## 已完成内容
@@ -317,7 +317,24 @@ docs/15-平台级ToolGuard与Interrupt设计记录.md
 
 ### 14. 多 Agent / 计划型 Agent
 
-要学习和实现：
+已完成第一轮：
+
+- `/plan` 进入 `PLAN_ONLY` 模式。
+- `Orchestrator` 负责任务路由和节点编排。
+- `PlannerAgent` 只生成结构化计划，不注册写入工具和 Bash。
+- 前端通过计划卡片展示步骤、风险和预期工具。
+- 刷新后通过 `PLAN_CREATED` 事件重建计划卡片。
+
+已完成第二轮雏形：
+
+- 计划卡片增加“执行计划”按钮。
+- 前端把结构化 plan 回传给后端。
+- 后端进入 `PLAN_EXECUTE` 模式。
+- `Orchestrator` 将计划交给 `ExecutorAgent`。
+- `ExecutorAgent` 第一版复用原单体 ReAct Coding Agent 的工具执行能力。
+- 执行开始和结束时通过 `PLAN_STEP_STATUS_CHANGED` 更新计划步骤状态。
+
+后续要学习和实现：
 
 - Plan Agent。
 - Observe Agent。
@@ -325,6 +342,12 @@ docs/15-平台级ToolGuard与Interrupt设计记录.md
 - Review Agent。
 - 子 Agent 隔离上下文。
 - 任务拆解和结果合并。
+
+详见：
+
+```text
+docs/16-多Agent第一轮实现记录.md
+```
 
 ### 15. 产品化治理
 
@@ -355,5 +378,5 @@ Agent 请求完整生命周期 ✅
 Checkpoint 工具审批恢复第一轮 ✅
 平台级 ToolGuard / Interrupt 第一轮 ✅
 fallback 与治理增强
-多 Agent 编排
+多 Agent 编排第二轮：PLAN_ONLY + PlannerAgent + ExecutorAgent 雏形 ✅
 ```

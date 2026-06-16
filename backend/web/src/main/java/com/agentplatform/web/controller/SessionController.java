@@ -117,6 +117,7 @@ public class SessionController {
         runs.sort(this::compareRunOrder);
         for (AgentRunEntity run : runs) {
             attachToolCalls(timeline, run, rebuildToolCalls(run.getId()));
+            attachPlan(timeline, run, rebuildPlan(run.getId()));
         }
         return ApiResponse.success(timeline);
     }
@@ -159,6 +160,7 @@ public class SessionController {
         dto.put("timestamp", message.getCreatedAt());
         dto.put("createdAt", message.getCreatedAt());
         dto.put("toolCalls", new ArrayList<>());
+        dto.put("plan", null);
         return dto;
     }
 
@@ -190,6 +192,48 @@ public class SessionController {
             existing.addAll(toolCalls);
             return;
         }
+    }
+
+    /**
+     * 中文注释：计划卡片也从 agent_events 重建，避免前端刷新后只剩普通 Markdown。
+     */
+    private void attachPlan(List<Map<String, Object>> timeline, AgentRunEntity run, Map<String, Object> plan) {
+        if (plan == null || plan.isEmpty()) {
+            return;
+        }
+
+        int userIndex = -1;
+        for (int i = 0; i < timeline.size(); i++) {
+            Object messageId = timeline.get(i).get("id");
+            if (String.valueOf(run.getUserMessageId()).equals(String.valueOf(messageId))) {
+                userIndex = i;
+                break;
+            }
+        }
+
+        for (int i = Math.max(0, userIndex + 1); i < timeline.size(); i++) {
+            Map<String, Object> message = timeline.get(i);
+            if (!"assistant".equals(message.get("role"))) {
+                continue;
+            }
+            message.put("plan", plan);
+            return;
+        }
+    }
+
+    private Map<String, Object> rebuildPlan(Long runId) {
+        List<AgentEventEntity> events = agentEventRepository.findByRunIdOrderByIdAsc(runId);
+        for (AgentEventEntity event : events) {
+            if (!"PLAN_CREATED".equals(event.getEventType())) {
+                continue;
+            }
+            Map<String, Object> metadata = parseMetadata(event.getMetadataJson());
+            Map<String, Object> plan = normalizeMap(metadata.get("plan"));
+            if (plan != null && !plan.isEmpty()) {
+                return plan;
+            }
+        }
+        return null;
     }
 
     private List<Map<String, Object>> rebuildToolCalls(Long runId) {
@@ -236,6 +280,19 @@ public class SessionController {
             }
         }
         return toolCalls;
+    }
+
+    private Map<String, Object> normalizeMap(Object value) {
+        if (!(value instanceof Map<?, ?> raw)) {
+            return null;
+        }
+        Map<String, Object> normalized = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : raw.entrySet()) {
+            if (entry.getKey() != null) {
+                normalized.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+        }
+        return normalized;
     }
 
     private Map<String, Object> findOrCreateToolCall(List<Map<String, Object>> toolCalls,

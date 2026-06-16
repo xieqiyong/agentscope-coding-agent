@@ -250,6 +250,32 @@ checkpoint 保存上下文现场
 approval-stream 负责 resume
 ```
 
+## 审批恢复时的模型配置
+
+这次测试暴露了一个恢复链路问题：
+
+```text
+首轮 chat-stream 带了 modelBaseUrl / modelName / apiKey
+  ↓
+工具触发审批，run 进入 WAITING_APPROVAL
+  ↓
+用户点击批准，approval-stream 继续执行
+  ↓
+approval-stream 没带模型配置
+  ↓
+AgentScopeRuntimeAdapter 恢复模型调用时报：模型地址 baseUrl 不能为空
+```
+
+这个问题说明：审批恢复不是一个孤立按钮，它必须能恢复一次 Agent run 所需的运行配置。
+
+当前修正策略：
+
+- 前端 approval-stream 补传当前默认模型配置。
+- 后端构建 RuntimeContext 时，如果 Agent 没绑定模型配置，就兜底使用默认模型配置。
+- Controller 只在 service 没有发出 `RUN_ERROR` 时补发兜底错误，避免同一次失败出现两个 `RUN_ERROR`。
+
+更长期的主流做法是：run 创建时把本次使用的模型配置快照保存下来，恢复时优先读取 run 快照，而不是依赖前端再次传参。
+
 ## 当前限制
 
 第一轮平台 ToolGuard 还有几个限制：

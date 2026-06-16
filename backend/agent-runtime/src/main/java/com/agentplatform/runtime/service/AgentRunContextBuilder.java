@@ -51,10 +51,7 @@ public class AgentRunContextBuilder {
         AgentEntity agent = agentRepository.findById(command.getAgentId())
                 .orElseThrow(() -> new BusinessException(404, "智能体不存在"));
 
-        ModelConfigEntity modelConfig = null;
-        if (agent.getModelConfigId() != null) {
-            modelConfig = modelConfigRepository.findById(agent.getModelConfigId()).orElse(null);
-        }
+        ModelConfigEntity modelConfig = resolveModelConfig(agent);
 
         String userId = StringUtils.hasText(command.getUserId()) ? command.getUserId() : "default";
         List<MemoryEntryEntity> activeMemories = memoryContextAssembler.loadActiveMemories(workspace.getId(), userId);
@@ -145,6 +142,17 @@ public class AgentRunContextBuilder {
                 + "- 当前时区：Asia/Shanghai\n"
                 + "- 用户提到今天、昨天、明天、今年、最新、最近时，必须以这里的日期为准。\n"
                 + "- 不要根据训练数据猜日期；涉及最新外部事实、版本、新闻、价格、政策时，必须使用 WebSearch 或明确说明未联网验证。";
+    }
+
+    private ModelConfigEntity resolveModelConfig(AgentEntity agent) {
+        if (agent.getModelConfigId() != null) {
+            ModelConfigEntity boundConfig = modelConfigRepository.findById(agent.getModelConfigId()).orElse(null);
+            if (boundConfig != null) {
+                return boundConfig;
+            }
+        }
+        // 中文注释：审批恢复、计划执行等二次请求可能不会带模型参数，统一兜底到默认模型配置。
+        return modelConfigRepository.findByDefaultConfigTrue().stream().findFirst().orElse(null);
     }
 
     private String firstNonBlank(String first, String second) {

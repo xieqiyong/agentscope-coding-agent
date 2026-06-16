@@ -1,7 +1,8 @@
 import { ref } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import { useRuntimeStore } from '@/stores/runtime'
-import type { Confirmation } from '@/types'
+import { modelConfigApi } from '@/api/modelConfig'
+import type { Confirmation, PlanInfo } from '@/types'
 import type { RuntimeEvent, RuntimeEventType } from '@/types/events'
 
 export function useSse() {
@@ -32,6 +33,8 @@ export function useSse() {
     modelBaseUrl?: string
     modelName?: string
     apiKey?: string
+    runMode?: string
+    plan?: PlanInfo
   }) {
     error.value = null
     abortController.value = new AbortController()
@@ -55,12 +58,16 @@ export function useSse() {
     runtimeStore.startAgentRun()
 
     try {
+      const modelConfig = await loadModelConfig()
       await consumeStream('/api/agent-runtime/approval-stream', {
         approvalRequestId: Number(confirmation.approvalId),
         runId: confirmation.runId == null ? undefined : Number(confirmation.runId),
         approved,
         userId: '1',
         timeoutSeconds: 86400,
+        modelBaseUrl: modelConfig.modelBaseUrl,
+        modelName: modelConfig.modelName,
+        apiKey: modelConfig.apiKey,
       })
       chatStore.resolveConfirmation(confirmation.patchId)
     } catch (e: any) {
@@ -68,6 +75,28 @@ export function useSse() {
     } finally {
       runtimeStore.endAgentRun()
       chatStore.finalizeStreamingMessage()
+    }
+  }
+
+  async function loadModelConfig(): Promise<{
+    modelBaseUrl?: string
+    modelName?: string
+    apiKey?: string
+  }> {
+    try {
+      const res: any = await modelConfigApi.getDefault()
+      const cfg = res.data
+      return {
+        modelBaseUrl: cfg?.baseUrl,
+        modelName: cfg?.modelName,
+        apiKey: cfg?.apiKeyCipher,
+      }
+    } catch {
+      return {
+        modelBaseUrl: localStorage.getItem('coding-agent-base-url') || undefined,
+        modelName: localStorage.getItem('coding-agent-model') || undefined,
+        apiKey: localStorage.getItem('coding-agent-api-key') || undefined,
+      }
     }
   }
 
@@ -170,6 +199,9 @@ export function useSse() {
         runtimeStore.recordWarning(event.content || '警告')
         break
       case 'RUN_STATUS_CHANGED':
+      case 'AGENT_HANDOFF':
+      case 'PLAN_CREATED':
+      case 'PLAN_STEP_STATUS_CHANGED':
         runtimeStore.addEvent({
           id: event.eventId,
           type,

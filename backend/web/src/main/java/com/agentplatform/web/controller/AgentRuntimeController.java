@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 智能体运行时 Web 入口。
@@ -39,13 +40,19 @@ public class AgentRuntimeController {
     @PostMapping(value = "/chat-stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter chatStream(@RequestBody AgentRunCommand command) {
         SseEmitter emitter = new SseEmitter(0L);
+        AtomicBoolean runErrorForwarded = new AtomicBoolean(false);
         executorService.submit(() -> {
             try {
-                agentRuntimeService.executeStreaming(command, event -> sendEvent(emitter, event));
+                agentRuntimeService.executeStreaming(command, event -> {
+                    markRunError(event, runErrorForwarded);
+                    sendEvent(emitter, event);
+                });
                 emitter.complete();
             } catch (Exception e) {
-                sendEvent(emitter, RuntimeEvent.of(null, null, RuntimeEventType.RUN_ERROR,
-                        "运行异常", e.getMessage(), Map.of(), 0));
+                if (!runErrorForwarded.get()) {
+                    sendEvent(emitter, RuntimeEvent.of(null, null, RuntimeEventType.RUN_ERROR,
+                            "运行异常", e.getMessage(), Map.of(), 0));
+                }
                 emitter.completeWithError(e);
             }
         });
@@ -55,17 +62,29 @@ public class AgentRuntimeController {
     @PostMapping(value = "/approval-stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter approvalStream(@RequestBody AgentApprovalCommand command) {
         SseEmitter emitter = new SseEmitter(0L);
+        AtomicBoolean runErrorForwarded = new AtomicBoolean(false);
         executorService.submit(() -> {
             try {
-                agentRuntimeService.resumeApprovalStreaming(command, event -> sendEvent(emitter, event));
+                agentRuntimeService.resumeApprovalStreaming(command, event -> {
+                    markRunError(event, runErrorForwarded);
+                    sendEvent(emitter, event);
+                });
                 emitter.complete();
             } catch (Exception e) {
-                sendEvent(emitter, RuntimeEvent.of(null, null, RuntimeEventType.RUN_ERROR,
-                        "审批恢复异常", e.getMessage(), Map.of(), 0));
+                if (!runErrorForwarded.get()) {
+                    sendEvent(emitter, RuntimeEvent.of(null, null, RuntimeEventType.RUN_ERROR,
+                            "审批恢复异常", e.getMessage(), Map.of(), 0));
+                }
                 emitter.completeWithError(e);
             }
         });
         return emitter;
+    }
+
+    private void markRunError(RuntimeEvent event, AtomicBoolean runErrorForwarded) {
+        if (event != null && event.getType() == RuntimeEventType.RUN_ERROR) {
+            runErrorForwarded.set(true);
+        }
     }
 
     private void sendEvent(SseEmitter emitter, RuntimeEvent event) {

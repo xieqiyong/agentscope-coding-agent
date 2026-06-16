@@ -25,6 +25,7 @@
         @review-confirmation="$emit('reviewConfirmation', $event)"
         @approve-confirmation="handleToolApproval($event, true)"
         @reject-confirmation="handleToolApproval($event, false)"
+        @execute-plan="handleExecutePlan"
       />
     </div>
 
@@ -40,7 +41,8 @@ import ChatInput from '@/components/chat/ChatInput.vue'
 import { useChatStore } from '@/stores/chat'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useSse } from '@/composables/useSse'
-import type { Confirmation } from '@/types'
+import { modelConfigApi } from '@/api/modelConfig'
+import type { Confirmation, PlanInfo, PlanStep } from '@/types'
 
 defineEmits<{
   reviewConfirmation: [confirmation: Confirmation]
@@ -75,6 +77,88 @@ watch(
 async function handleToolApproval(confirmation: Confirmation, approved: boolean) {
   if (confirmation.kind !== 'TOOL_PERMISSION') return
   await sse.respondApproval(confirmation, approved)
+}
+
+async function handleExecutePlan(plan: PlanInfo) {
+  if (!workspaceStore.currentWorkspace || chatStore.isStreaming) return
+
+  const message = buildPlanExecutionMessage(plan)
+  chatStore.addUserMessage(message)
+
+  const modelConfig = await loadModelConfig()
+  const ws = workspaceStore.currentWorkspace
+  await sse.start({
+    workspaceId: Number(ws.id),
+    conversationId: chatStore.lastConversationId ?? undefined,
+    message,
+    plan,
+    runMode: 'PLAN_EXECUTE',
+    agentId: 1,
+    userId: '1',
+    timeoutSeconds: 86400,
+    modelBaseUrl: modelConfig.modelBaseUrl,
+    modelName: modelConfig.modelName,
+    apiKey: modelConfig.apiKey,
+  })
+}
+
+async function loadModelConfig(): Promise<{
+  modelBaseUrl?: string
+  modelName?: string
+  apiKey?: string
+}> {
+  try {
+    const res: any = await modelConfigApi.getDefault()
+    const cfg = res.data
+    return {
+      modelBaseUrl: cfg?.baseUrl,
+      modelName: cfg?.modelName,
+      apiKey: cfg?.apiKeyCipher,
+    }
+  } catch {
+    return {
+      modelBaseUrl: localStorage.getItem('coding-agent-base-url') || undefined,
+      modelName: localStorage.getItem('coding-agent-model') || undefined,
+      apiKey: localStorage.getItem('coding-agent-api-key') || undefined,
+    }
+  }
+}
+
+function buildPlanExecutionMessage(plan: PlanInfo): string {
+  const lines: string[] = [
+    `执行计划：${plan.title}`,
+    '',
+  ]
+  if (plan.summary) {
+    lines.push(`摘要：${plan.summary}`, '')
+  }
+  lines.push(`风险等级：${plan.riskLevel}`, '')
+  lines.push('计划步骤：')
+  plan.steps.forEach((step, index) => {
+    lines.push(formatPlanStep(step, index))
+  })
+  if (plan.acceptanceCriteria.length > 0) {
+    lines.push('', '完成标准：')
+    plan.acceptanceCriteria.forEach((item, index) => {
+      lines.push(`${index + 1}. ${item}`)
+    })
+  }
+  lines.push(
+    '',
+    '请作为 ExecutorAgent 按上面的计划执行。执行前仍要读取必要文件和证据；如果计划与代码事实冲突，以实际证据为准并说明调整原因。',
+  )
+  return lines.join('\n')
+}
+
+function formatPlanStep(step: PlanStep, index: number): string {
+  const parts = [`${step.id || index + 1}. ${step.title}`]
+  if (step.description) {
+    parts.push(`   说明：${step.description}`)
+  }
+  if (step.tools.length > 0) {
+    parts.push(`   预期工具：${step.tools.join(', ')}`)
+  }
+  return parts.join('\n')
 }
 </script>
 

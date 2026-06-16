@@ -1,5 +1,7 @@
 package com.agentplatform.runtime.model;
 
+import java.util.Map;
+
 /**
  * 启动一次智能体执行的命令。
  * 这个对象承载前端发起聊天时传入的必要上下文。
@@ -30,6 +32,17 @@ public class AgentRunCommand {
      * 用户本轮输入。
      */
     private String message;
+
+    /**
+     * 运行模式。默认 SINGLE_AGENT；/plan 会转换成 PLAN_ONLY。
+     */
+    private String runMode;
+
+    /**
+     * 前端计划卡片回传的结构化计划。
+     * 中文注释：执行计划时用于 Orchestrator 更新步骤状态，真正执行仍以 message 中的明确指令为准。
+     */
+    private Map<String, Object> plan;
 
     /**
      * 新会话标题，可为空。
@@ -107,6 +120,22 @@ public class AgentRunCommand {
         this.message = message;
     }
 
+    public String getRunMode() {
+        return runMode;
+    }
+
+    public void setRunMode(String runMode) {
+        this.runMode = runMode;
+    }
+
+    public Map<String, Object> getPlan() {
+        return plan;
+    }
+
+    public void setPlan(Map<String, Object> plan) {
+        this.plan = plan;
+    }
+
     public String getTitle() {
         return title;
     }
@@ -163,4 +192,3 @@ public class AgentRunCommand {
         this.traceThinkingContent = traceThinkingContent;
     }
 }
-

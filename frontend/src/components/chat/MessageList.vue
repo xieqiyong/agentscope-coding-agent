@@ -7,6 +7,7 @@
       @review-confirmation="$emit('reviewConfirmation', $event)"
       @approve-confirmation="$emit('approveConfirmation', $event)"
       @reject-confirmation="$emit('rejectConfirmation', $event)"
+      @execute-plan="$emit('executePlan', $event)"
     />
     <div v-if="chatStore.isStreaming && !lastMessageIsStreaming" class="typing-indicator">
       <span class="dot"></span>
@@ -20,12 +21,13 @@
 import { computed } from 'vue'
 import ChatMessage from './ChatMessage.vue'
 import { useChatStore } from '@/stores/chat'
-import type { Confirmation } from '@/types'
+import type { Confirmation, PlanInfo } from '@/types'
 
 defineEmits<{
   reviewConfirmation: [confirmation: Confirmation]
   approveConfirmation: [confirmation: Confirmation]
   rejectConfirmation: [confirmation: Confirmation]
+  executePlan: [plan: PlanInfo]
 }>()
 
 const chatStore = useChatStore()

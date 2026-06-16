@@ -1,7 +1,7 @@
 ﻿import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { chatApi } from '@/api/chat'
-import type { Session, ChatMessage, ToolCallInfo, Confirmation, PatchFile } from '@/types'
+import type { Session, ChatMessage, ToolCallInfo, Confirmation, PatchFile, PlanInfo, PlanStep } from '@/types'
 import type { RuntimeEvent, RuntimeEventType } from '@/types/events'
 
 const STORAGE_CONVERSATION_ID = 'coding-agent-current-conversation-id'
@@ -154,6 +154,14 @@ export const useChatStore = defineStore('chat', () => {
 
       case 'TOOL_RESULT_FINISHED':
         handleToolResultFinished(event)
+        break
+
+      case 'PLAN_CREATED':
+        handlePlanCreated(event)
+        break
+
+      case 'PLAN_STEP_STATUS_CHANGED':
+        handlePlanStepStatusChanged(event)
         break
 
       case 'CONFIRMATION_REQUIRED':
@@ -413,6 +421,30 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  function handlePlanCreated(event: RuntimeEvent) {
+    rememberConversationFromEvent(event)
+    const plan = normalizePlanInfo(event.metadata?.plan)
+    if (!plan) return
+
+    isStreaming.value = true
+    const message = ensureAssistantRuntimeMessage()
+    message.plan = plan
+    message.content = message.content || ''
+    message.isStreaming = true
+  }
+
+  function handlePlanStepStatusChanged(event: RuntimeEvent) {
+    const stepId = readString(event.metadata?.stepId)
+    const status = normalizePlanStepStatus(event.metadata?.status)
+    if (!stepId || !status) return
+
+    const message = findLatestPlanMessage()
+    const step = message?.plan?.steps.find((item) => String(item.id) === stepId)
+    if (step) {
+      step.status = status
+    }
+  }
+
   function ensureAssistantRuntimeMessage(): ChatMessage {
     let lastMsg = messages.value[messages.value.length - 1]
     // 如果最后一条是 assistant 消息（同一轮运行），复用它挂载运行期状态。
@@ -488,6 +520,59 @@ export const useChatStore = defineStore('chat', () => {
     return value && typeof value === 'object' && !Array.isArray(value)
       ? value as Record<string, unknown>
       : {}
+  }
+
+  function normalizePlanInfo(value: unknown): PlanInfo | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+    const raw = value as Record<string, unknown>
+    const steps = Array.isArray(raw.steps)
+      ? raw.steps.map(normalizePlanStep)
+      : []
+
+    return {
+      title: readString(raw.title) || '执行计划',
+      summary: readString(raw.summary),
+      riskLevel: readRiskLevel(raw.riskLevel),
+      steps,
+      acceptanceCriteria: readStringList(raw.acceptanceCriteria),
+      expectedTools: readStringList(raw.expectedTools),
+      requiresApproval: raw.requiresApproval === true,
+    }
+  }
+
+  function normalizePlanStep(value: unknown, index: number): PlanStep {
+    const raw = value && typeof value === 'object' && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : {}
+    return {
+      id: readString(raw.id) || String(index + 1),
+      title: readString(raw.title) || `步骤 ${index + 1}`,
+      description: readString(raw.description),
+      status: normalizePlanStepStatus(raw.status) || 'pending',
+      agentName: readString(raw.agentName) || 'ExecutorAgent',
+      tools: readStringList(raw.tools),
+    }
+  }
+
+  function normalizePlanStepStatus(value: unknown): PlanStep['status'] | '' {
+    const text = readString(value).toLowerCase()
+    if (text === 'pending' || text === 'in_progress' || text === 'completed' || text === 'failed') {
+      return text
+    }
+    return ''
+  }
+
+  function readStringList(value: unknown): string[] {
+    if (!Array.isArray(value)) return []
+    return value.map(readString).filter(Boolean)
+  }
+
+  function findLatestPlanMessage(): ChatMessage | null {
+    for (let i = messages.value.length - 1; i >= 0; i--) {
+      const msg = messages.value[i]
+      if (msg.role === 'assistant' && msg.plan) return msg
+    }
+    return null
   }
 
   function isPatchProposalTool(toolName: string): boolean {
@@ -784,13 +869,15 @@ export const useChatStore = defineStore('chat', () => {
   function normalizeBackendMessage(row: any): ChatMessage | null {
     const roleText = String(row?.role || '').toLowerCase()
     if (roleText !== 'user' && roleText !== 'assistant') return null
+    const plan = normalizePlanInfo(row.plan)
     return {
       id: String(row.id || `msg-${Date.now()}`),
       sessionId: String(row.conversationId || row.sessionId || ''),
       role: roleText,
-      content: String(row.content || ''),
+      content: plan ? '' : String(row.content || ''),
       timestamp: row.createdAt || row.updatedAt || new Date().toISOString(),
       toolCalls: normalizeBackendToolCalls(row.toolCalls),
+      plan,
     }
   }
 
