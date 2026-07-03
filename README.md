@@ -1,3 +1,8 @@
+## 🎬 项目演示
+
+[![项目演示视频](./docs/demo.png)](https://ai.sugeapi.cn/files/video/demo-small.mp4)
+
+> 点击上方图片查看完整演示视频。
 # Java AgentScope Coding Agent
 
 一个基于 **Java + Spring Boot + AgentScope Java** 的网页版 Coding Agent 实验项目。
