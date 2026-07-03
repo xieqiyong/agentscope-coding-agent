@@ -1,0 +1,8 @@
+[2m15:15:38[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/model-configs/default[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
+[2m15:15:38[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/workspaces[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1193:18)
+    at afterConnectMultiple (node:net:1783:7)
