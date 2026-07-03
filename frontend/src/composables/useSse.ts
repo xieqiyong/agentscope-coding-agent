@@ -35,6 +35,7 @@ export function useSse() {
     apiKey?: string
     runMode?: string
     plan?: PlanInfo
+    traceThinkingContent?: boolean
   }) {
     error.value = null
     abortController.value = new AbortController()
@@ -42,7 +43,10 @@ export function useSse() {
     runtimeStore.startAgentRun()
 
     try {
-      await consumeStream('/api/agent-runtime/chat-stream', body)
+      await consumeStream('/api/agent-runtime/chat-stream', {
+        ...body,
+        traceThinkingContent: body.traceThinkingContent ?? true,
+      })
     } catch (e: any) {
       handleStreamError(e)
     } finally {
@@ -68,6 +72,7 @@ export function useSse() {
         modelBaseUrl: modelConfig.modelBaseUrl,
         modelName: modelConfig.modelName,
         apiKey: modelConfig.apiKey,
+        traceThinkingContent: true,
       })
       chatStore.resolveConfirmation(confirmation.patchId)
     } catch (e: any) {
@@ -200,6 +205,7 @@ export function useSse() {
         break
       case 'RUN_STATUS_CHANGED':
       case 'AGENT_HANDOFF':
+      case 'ROUTE_SELECTED':
       case 'PLAN_CREATED':
       case 'PLAN_STEP_STATUS_CHANGED':
         runtimeStore.addEvent({
@@ -207,7 +213,7 @@ export function useSse() {
           type,
           timestamp: Date.now(),
           label: event.stage || '运行状态变更',
-          detail: event.content || undefined,
+          detail: routeEventDetail(event) || event.content || undefined,
           severity: 'info',
         })
         break
@@ -225,6 +231,20 @@ export function useSse() {
         // 其他事件不重复记录到 runtime panel
         break
     }
+  }
+
+  function routeEventDetail(event: RuntimeEvent): string {
+    if (event.type !== 'ROUTE_SELECTED') return ''
+    const route = event.metadata?.effectiveRoute || event.metadata?.route
+    const intent = event.metadata?.intent
+    const confidence = event.metadata?.confidence
+    const reason = event.content || ''
+    return [
+      route ? `route=${route}` : '',
+      intent ? `intent=${intent}` : '',
+      typeof confidence === 'number' ? `confidence=${confidence.toFixed(2)}` : '',
+      reason,
+    ].filter(Boolean).join(' · ')
   }
 
   function abort() {

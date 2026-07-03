@@ -40,7 +40,7 @@ public class ExecutorNode implements AgentNode {
                 "ExecutorAgent 开始按计划执行任务", Map.of("node", nodeName()));
 
         String originalSystemPrompt = context.getSystemPrompt();
-        context.setSystemPrompt(appendExecutorPrompt(originalSystemPrompt));
+        context.setSystemPrompt(appendExecutorPrompt(originalSystemPrompt, state.getPlan()));
         try {
             return agentScopeRuntimeAdapter.execute(context, state.getSink());
         } finally {
@@ -48,7 +48,7 @@ public class ExecutorNode implements AgentNode {
         }
     }
 
-    private String appendExecutorPrompt(String originalPrompt) {
+    private String appendExecutorPrompt(String originalPrompt, AgentPlan plan) {
         String base = StringUtils.hasText(originalPrompt) ? originalPrompt : "";
         return base + """
 
@@ -59,7 +59,42 @@ public class ExecutorNode implements AgentNode {
                 3. 如果计划和实际代码证据冲突，以实际证据为准，并在最终回答里说明调整原因。
                 4. 涉及文件修改、命令执行时，继续遵守平台工具权限、沙箱和审批规则。
                 5. 完成后用简洁清单说明实际执行了哪些动作、修改了哪些文件、还有哪些风险。
-                """;
+                """ + formatPlanPrompt(plan);
+    }
+
+    private String formatPlanPrompt(AgentPlan plan) {
+        if (plan == null) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder();
+        builder.append("\n【待执行计划】\n");
+        builder.append("- 标题：").append(safe(plan.getTitle())).append("\n");
+        builder.append("- 摘要：").append(safe(plan.getSummary())).append("\n");
+        builder.append("- 风险等级：").append(safe(plan.getRiskLevel())).append("\n");
+        if (plan.getSteps() != null && !plan.getSteps().isEmpty()) {
+            builder.append("- 步骤：\n");
+            for (AgentPlanStep step : plan.getSteps()) {
+                builder.append("  ")
+                        .append(safe(step.getId()))
+                        .append(". ")
+                        .append(safe(step.getTitle()));
+                if (StringUtils.hasText(step.getDescription())) {
+                    builder.append("：").append(step.getDescription());
+                }
+                builder.append("\n");
+            }
+        }
+        if (plan.getAcceptanceCriteria() != null && !plan.getAcceptanceCriteria().isEmpty()) {
+            builder.append("- 完成标准：\n");
+            for (String item : plan.getAcceptanceCriteria()) {
+                builder.append("  - ").append(safe(item)).append("\n");
+            }
+        }
+        return builder.toString();
+    }
+
+    private String safe(String value) {
+        return value == null ? "" : value;
     }
 
     private void emit(MultiAgentState state, RuntimeEventType type, String stage,

@@ -1,15 +1,14 @@
 ﻿<template>
   <div class="session-list">
     <div class="session-list-header">
-      <span class="section-label">会话</span>
+      <span class="section-label">Recents</span>
       <button
         class="new-chat-btn"
         @click="clearCurrentSession"
         :disabled="!workspaceStore.currentWorkspace"
         title="开始新对话"
       >
-        <i class="pi pi-plus" style="font-size: 0.7rem;"></i>
-        <span>新会话</span>
+        <i class="pi pi-sliders-h" style="font-size: 0.78rem;"></i>
       </button>
     </div>
 
@@ -39,25 +38,14 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, watch } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import { useWorkspaceStore } from '@/stores/workspace'
 
 const chatStore = useChatStore()
 const workspaceStore = useWorkspaceStore()
 
-onMounted(async () => {
-  if (workspaceStore.currentWorkspace) {
-    await chatStore.fetchSessions(workspaceStore.currentWorkspace.id)
-  }
-})
-
-// 工作区切换时重新加载会话列表
-watch(() => workspaceStore.currentWorkspace?.id, async (newId) => {
-  if (newId) {
-    await chatStore.fetchSessions(newId)
-  }
-})
+// 会话列表的加载和当前会话恢复由 AgentWorkspaceView 统一负责（避免多处重复请求）。
+// 这里只处理用户交互：选中会话、新建、删除。
 
 function clearCurrentSession() {
   chatStore.clearSession()
@@ -93,6 +81,7 @@ function formatTime(dateStr: string): string {
 .session-list {
   display: flex;
   flex-direction: column;
+  padding: 0 4px;
 }
 
 .session-list-header {
@@ -104,23 +93,24 @@ function formatTime(dateStr: string): string {
 
 .section-label {
   font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  font-weight: 600;
+  color: var(--text-secondary);
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
 }
 
 .new-chat-btn {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  border: 1px solid var(--border-color);
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
   background: transparent;
-  border-radius: var(--radius-sm);
+  border-radius: 8px;
   cursor: pointer;
   color: var(--text-secondary);
-  font-size: var(--font-size-xs);
   transition: all 0.15s;
 }
 
@@ -139,27 +129,27 @@ function formatTime(dateStr: string): string {
   font-size: var(--font-size-xs);
   color: var(--text-muted);
   text-align: center;
-  padding: var(--spacing-lg) var(--spacing-md);
+  padding: 16px 10px;
 }
 
 .session-item {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  padding: var(--spacing-sm) var(--spacing-md);
-  border-radius: 0;
+  min-height: 40px;
+  padding: 7px 8px;
+  border-radius: 9px;
   cursor: pointer;
   transition: background 0.15s;
-  border-left: 2px solid transparent;
+  border-left: none;
 }
 
 .session-item:hover {
-  background: var(--bg-hover);
+  background: rgba(237, 232, 221, 0.86);
 }
 
 .session-item.active {
-  background: var(--bg-hover);
-  border-left-color: var(--accent);
+  background: rgba(237, 232, 221, 0.96);
 }
 
 .session-item.active .session-title {
@@ -173,8 +163,8 @@ function formatTime(dateStr: string): string {
 
 .session-title {
   display: block;
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  font-size: 0.94rem;
+  color: var(--ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -186,7 +176,7 @@ function formatTime(dateStr: string): string {
 
 .session-time {
   display: block;
-  font-size: 0.65rem;
+  font-size: 0.68rem;
   color: var(--text-muted);
   margin-top: 2px;
 }
@@ -199,7 +189,7 @@ function formatTime(dateStr: string): string {
   flex-shrink: 0;
   border: none;
   background: transparent;
-  border-radius: var(--radius-sm);
+  border-radius: 8px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -217,4 +207,3 @@ function formatTime(dateStr: string): string {
   background: rgba(239, 68, 68, 0.1);
 }
 </style>
-

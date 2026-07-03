@@ -18,7 +18,7 @@ public class AgentScopeSessionProperties {
 
     /**
      * 状态存储类型：redis / json / memory。
-     * 生产和面试主线推荐 redis，本地临时验证可以切到 json。
+     * Redis 由平台实现 AgentStateStore，避免依赖 AgentScope 内部是否提供 Redis 实现。
      */
     private String type = "redis";
 
@@ -78,12 +78,38 @@ public class AgentScopeSessionProperties {
          */
         private String uri = "redis://127.0.0.1:6379/0";
 
+        /**
+         * Redis 连接超时时间，避免远端 Redis 异常时阻塞整条 SSE。
+         */
+        private long connectTimeoutSeconds = 3;
+
+        /**
+         * Redis 命令超时时间，主要保护 exists/get/save 等同步调用。
+         */
+        private long commandTimeoutSeconds = 3;
+
         public String getUri() {
             return uri;
         }
 
         public void setUri(String uri) {
             this.uri = uri;
+        }
+
+        public long getConnectTimeoutSeconds() {
+            return connectTimeoutSeconds;
+        }
+
+        public void setConnectTimeoutSeconds(long connectTimeoutSeconds) {
+            this.connectTimeoutSeconds = connectTimeoutSeconds;
+        }
+
+        public long getCommandTimeoutSeconds() {
+            return commandTimeoutSeconds;
+        }
+
+        public void setCommandTimeoutSeconds(long commandTimeoutSeconds) {
+            this.commandTimeoutSeconds = commandTimeoutSeconds;
         }
     }
 

@@ -38,6 +38,8 @@ export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   timestamp: string
+  // 标记特殊用户消息（如 plan-execute），用于差异化渲染，避免长结构化文本塞进右气泡
+  messageKind?: 'plan-execute'
   thinking?: ThinkingInfo
   toolCalls?: ToolCallInfo[]
   plan?: PlanInfo

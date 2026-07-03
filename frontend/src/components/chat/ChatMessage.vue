@@ -1,5 +1,5 @@
 <template>
-  <div :class="['chat-message', message.role]">
+  <div :class="['chat-message', message.role, { 'is-plan-execute': message.messageKind === 'plan-execute' }]">
     <!-- 角色标签 -->
     <div class="message-role-label">
       <div :class="['role-badge', message.role]">
@@ -11,48 +11,49 @@
     <!-- 消息内容 -->
     <div class="message-body">
       <!-- 思考过程：默认展示状态，不展开完整推理链 -->
-      <div v-if="message.role === 'assistant' && thinking" class="thinking-trace">
+      <div v-if="message.role === 'assistant' && showThinkingTrace" class="thinking-trace">
         <button class="thinking-toggle" type="button" @click="thinkingExpanded = !thinkingExpanded">
-          <i :class="['pi', thinking.status === 'thinking' ? 'pi-spin pi-spinner' : 'pi-check-circle']"></i>
+          <i :class="['pi', thinkingIcon]"></i>
           <span class="thinking-title">{{ thinkingTitle }}</span>
           <span v-if="thinkingMeta" class="thinking-meta">{{ thinkingMeta }}</span>
           <i :class="['pi', thinkingExpanded ? 'pi-chevron-down' : 'pi-chevron-right', 'thinking-chevron']"></i>
         </button>
         <div v-if="thinkingExpanded" class="thinking-content">
-          <template v-if="thinkingContent">{{ thinkingContent }}</template>
-          <template v-else>{{ thinkingPlaceholder }}</template>
-        </div>
-      </div>
+          <div class="thinking-text">
+            <template v-if="thinkingContent">{{ thinkingContent }}</template>
+            <template v-else>{{ thinkingPlaceholder }}</template>
+          </div>
 
-      <!-- 工具调用轨迹 -->
-      <div v-if="message.role === 'assistant' && toolCalls.length" class="tool-trace">
-        <button class="tool-trace-toggle" type="button" @click="toolsExpanded = !toolsExpanded">
-          <i class="pi pi-wrench" style="font-size: 0.72rem;"></i>
-          <span class="tool-trace-title">工具调用</span>
-          <span :class="['tool-trace-state', toolTraceState]">{{ toolTraceLabel }}</span>
-          <span class="tool-trace-count">{{ toolCalls.length }} 个</span>
-          <i :class="['pi', toolsExpanded ? 'pi-chevron-down' : 'pi-chevron-right', 'tool-trace-chevron']"></i>
-        </button>
+          <div v-if="toolCalls.length" class="tool-trace">
+            <button class="tool-trace-toggle" type="button" @click="toolsExpanded = !toolsExpanded">
+              <i class="pi pi-wrench" style="font-size: 0.72rem;"></i>
+              <span class="tool-trace-title">工具调用</span>
+              <span :class="['tool-trace-state', toolTraceState]">{{ toolTraceLabel }}</span>
+              <span class="tool-trace-count">{{ toolCalls.length }} 个</span>
+              <i :class="['pi', toolsExpanded ? 'pi-chevron-down' : 'pi-chevron-right', 'tool-trace-chevron']"></i>
+            </button>
 
-        <div v-if="!toolsExpanded" class="tool-trace-compact">
-          <span
-            v-for="tc in compactToolCalls"
-            :key="tc.callId"
-            :class="['tool-chip', tc.status]"
-          >
-            {{ formatToolSignature(tc) }}
-          </span>
-          <span v-if="toolCalls.length > compactToolCalls.length" class="tool-chip more">
-            +{{ toolCalls.length - compactToolCalls.length }}
-          </span>
-        </div>
+            <div v-if="!toolsExpanded" class="tool-trace-compact">
+              <span
+                v-for="tc in compactToolCalls"
+                :key="tc.callId"
+                :class="['tool-chip', tc.status]"
+              >
+                {{ formatToolSignature(tc) }}
+              </span>
+              <span v-if="toolCalls.length > compactToolCalls.length" class="tool-chip more">
+                +{{ toolCalls.length - compactToolCalls.length }}
+              </span>
+            </div>
 
-        <div v-else class="tool-calls">
-          <ToolCallCard
-            v-for="tc in toolCalls"
-            :key="tc.callId"
-            :tool-call="tc"
-          />
+            <div v-else class="tool-calls">
+              <ToolCallCard
+                v-for="tc in toolCalls"
+                :key="tc.callId"
+                :tool-call="tc"
+              />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -79,7 +80,15 @@
         class="message-content markdown-body"
         v-html="renderedContent"
       ></div>
-      <!-- 用户消息：简单格式 -->
+      <!-- 用户消息：计划执行请求，左对齐结构化展示 -->
+      <div
+        v-else-if="message.role === 'user' && message.messageKind === 'plan-execute'"
+        class="message-content plan-execute-content"
+      >
+        <span class="plan-execute-tag"><i class="pi pi-send" style="font-size: 0.65rem;"></i> 已请求执行计划</span>
+        <pre class="plan-execute-text">{{ message.content }}</pre>
+      </div>
+      <!-- 用户消息：普通气泡 -->
       <div v-else-if="message.role === 'user'" class="message-content user-content">{{ message.content }}</div>
 
       <!-- Streaming cursor -->
@@ -161,33 +170,52 @@ const marked = new Marked(
 const toolCalls = computed(() => props.message.toolCalls || [])
 const compactToolCalls = computed(() => toolCalls.value.slice(0, 3))
 const thinking = computed(() => props.message.thinking)
+const showThinkingTrace = computed(() => Boolean(thinking.value || toolCalls.value.length))
 const hasAssistantContent = computed(() => Boolean((props.message.content || '').trim()))
 const hasContent = computed(() => Boolean((props.message.content || '').trim()))
 
+const thinkingIcon = computed(() => {
+  if (thinking.value?.status === 'thinking' || toolTraceState.value === 'running') {
+    return 'pi-spin pi-spinner'
+  }
+  if (toolTraceState.value === 'error') {
+    return 'pi-exclamation-circle'
+  }
+  return 'pi-check-circle'
+})
+
 const thinkingTitle = computed(() => {
-  if (!thinking.value) return ''
+  if (!thinking.value) return '思考过程'
   return thinking.value.status === 'thinking' ? '正在思考' : '已完成思考'
 })
 
 const thinkingMeta = computed(() => {
-  if (!thinking.value) return ''
-  if (thinking.value.status === 'thinking') return '分析中'
-  if (thinking.value.durationMs && thinking.value.durationMs > 0) {
-    return `${Math.max(1, Math.round(thinking.value.durationMs / 1000))} 秒`
+  const parts: string[] = []
+  if (thinking.value?.status === 'thinking') {
+    parts.push('分析中')
   }
-  if (thinking.value.chars && thinking.value.chars > 0) {
-    return `${thinking.value.chars} chars`
+  if (thinking.value?.durationMs && thinking.value.durationMs > 0) {
+    parts.push(`${Math.max(1, Math.round(thinking.value.durationMs / 1000))} 秒`)
   }
-  return ''
+  if (thinking.value?.chars && thinking.value.chars > 0) {
+    parts.push(`${thinking.value.chars} chars`)
+  }
+  if (toolCalls.value.length > 0) {
+    parts.push(`${toolCalls.value.length} 个工具`)
+  }
+  return parts.join(' · ')
 })
 
 const thinkingContent = computed(() => (thinking.value?.content || '').trim())
 
 const thinkingPlaceholder = computed(() => {
-  if (thinking.value?.omitted) {
-    return '模型正在分析上下文、工具结果和下一步动作。'
+  if (!thinking.value && toolCalls.value.length) {
+    return '本轮没有返回可展示的 thinking 文本，下面展示工具调用过程。'
   }
-  return '正在整理下一步。'
+  if (thinking.value?.omitted) {
+    return '模型未返回可透传的 thinking 内容，当前展示工具调用和运行事件轨迹。'
+  }
+  return '本轮模型没有返回可展示的思考内容。'
 })
 
 const toolTraceState = computed(() => {
@@ -371,8 +399,8 @@ function isCommandTool(toolName: string): boolean {
 <style scoped>
 /* ==================== 消息容器 ==================== */
 .chat-message {
-  padding: var(--spacing-md) 0;
-  border-bottom: 1px solid var(--border-color);
+  padding: 18px 0;
+  border-bottom: none;
 }
 
 .chat-message:last-child {
@@ -415,11 +443,11 @@ function isCommandTool(toolName: string): boolean {
 }
 
 .role-badge.user {
-  color: var(--accent);
+  color: var(--text-secondary);
 }
 
 .role-badge.assistant {
-  color: var(--success);
+  color: var(--accent);
 }
 
 /* ==================== 消息内容 ==================== */
@@ -438,19 +466,57 @@ function isCommandTool(toolName: string): boolean {
 .user-content {
   white-space: pre-wrap;
   word-break: break-word;
-  color: var(--text-primary);
+  color: var(--ink);
   background: var(--bg-chat-user);
-  padding: var(--spacing-sm) var(--spacing-md);
-  border-radius: var(--radius-sm);
-  border-left: 3px solid var(--accent);
+  padding: 10px 14px;
+  border-radius: 18px;
+  border-left: none;
   max-width: 80%;
   text-align: right;
   margin-left: auto;
 }
 
+/* 计划执行消息：左对齐，结构化展示，不走右气泡 */
+.chat-message.is-plan-execute {
+  align-items: flex-start;
+}
+
+.chat-message.is-plan-execute .message-role-label {
+  text-align: left;
+}
+
+.plan-execute-content {
+  width: min(100%, 760px);
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--accent);
+  border-radius: 14px;
+  background: var(--bg-chat-user);
+  padding: var(--spacing-sm) var(--spacing-md);
+}
+
+.plan-execute-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: var(--spacing-xs);
+}
+
+.plan-execute-text {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+
 /* Agent 消息 Markdown 限制宽度 */
 .markdown-body {
-  max-width: 90%;
+  max-width: 92%;
 }
 
 /* ==================== Markdown 排版 ==================== */
@@ -487,7 +553,7 @@ function isCommandTool(toolName: string): boolean {
 
 /* 行内代码 */
 .markdown-body :deep(code) {
-  background: rgba(0, 0, 0, 0.06);
+  background: rgba(47, 42, 36, 0.08);
   color: var(--text-primary);
   padding: 1px 5px;
   border-radius: 3px;
@@ -498,10 +564,10 @@ function isCommandTool(toolName: string): boolean {
 /* 代码块 */
 .markdown-body :deep(pre) {
   position: relative;
-  background: #0d1117;
+  background: #1f1b17;
   color: #c9d1d9;
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
+  border-radius: 14px;
   padding: var(--spacing-md);
   overflow-x: auto;
   margin: 0.75em 0;
@@ -552,8 +618,8 @@ function isCommandTool(toolName: string): boolean {
   margin: 0.75em 0;
   padding: 0.25em 0.75em;
   color: var(--text-secondary);
-  background: var(--bg-hover);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: rgba(237, 232, 221, 0.72);
+  border-radius: 0 12px 12px 0;
 }
 
 /* 表格 */
@@ -590,7 +656,7 @@ function isCommandTool(toolName: string): boolean {
 
 /* 链接 */
 .markdown-body :deep(a) {
-  color: var(--accent);
+  color: var(--code-accent);
   text-decoration: none;
 }
 
@@ -656,7 +722,7 @@ function isCommandTool(toolName: string): boolean {
   width: min(100%, 760px);
   margin-bottom: var(--spacing-sm);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
+  border-radius: 14px;
   background: color-mix(in srgb, var(--bg-hover) 76%, transparent);
   overflow: hidden;
 }
@@ -702,14 +768,23 @@ function isCommandTool(toolName: string): boolean {
   color: var(--text-secondary);
   font-size: var(--font-size-xs);
   line-height: 1.6;
+}
+
+.thinking-text {
   white-space: pre-wrap;
+  margin-bottom: var(--spacing-sm);
+}
+
+.thinking-text:last-child {
+  margin-bottom: 0;
 }
 
 .tool-trace {
-  width: min(100%, 760px);
-  margin-bottom: var(--spacing-sm);
+  width: 100%;
+  margin-top: var(--spacing-sm);
+  margin-bottom: 0;
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
+  border-radius: 14px;
   background: color-mix(in srgb, var(--bg-tool-card) 86%, transparent);
   overflow: hidden;
 }

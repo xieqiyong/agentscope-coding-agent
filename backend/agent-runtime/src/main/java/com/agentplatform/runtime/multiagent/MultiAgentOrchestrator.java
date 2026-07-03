@@ -1,6 +1,7 @@
 package com.agentplatform.runtime.multiagent;
 
 import com.agentplatform.persistence.enums.AgentRunStatus;
+import com.agentplatform.runtime.agentscope.AgentScopeRuntimeAdapter;
 import com.agentplatform.runtime.model.AgentRunResult;
 import com.agentplatform.runtime.model.RuntimeContext;
 import com.agentplatform.runtime.model.RuntimeEvent;
@@ -25,6 +26,12 @@ public class MultiAgentOrchestrator {
 
     @Resource
     private ExecutorNode executorNode;
+
+    @Resource
+    private RouterNode routerNode;
+
+    @Resource
+    private AgentScopeRuntimeAdapter agentScopeRuntimeAdapter;
 
     @Resource
     private ObjectMapper objectMapper;
@@ -70,6 +77,62 @@ public class MultiAgentOrchestrator {
                         "from", "Orchestrator",
                         "to", executorNode.nodeName()
                 ));
+        return executePlannedState(state);
+    }
+
+    public AgentRunResult routeAndExecute(RuntimeContext context, RuntimeEventSink sink) {
+        MultiAgentState state = new MultiAgentState();
+        state.setRuntimeContext(context);
+        state.setSink(sink);
+        state.setMode("AUTO");
+        state.setTask(context.getCommand().getMessage());
+
+        emit(context, sink, RuntimeEventType.AGENT_HANDOFF, "进入智能路由",
+                "Orchestrator 将普通用户输入交给 RouterAgent 判断流程", Map.of(
+                        "mode", "AUTO",
+                        "from", "Orchestrator",
+                        "to", routerNode.nodeName()
+                ));
+        AgentRouteDecision decision = routerNode.route(state);
+        emitRouteSelected(context, sink, decision);
+
+        String route = decision.effectiveRoute();
+        if (AgentRouteDecision.ROUTE_PLAN_ONLY.equals(route)) {
+            AgentNodeResult nodeResult = plannerNode.invoke(state);
+            return buildPlanOnlyResult(context, state, nodeResult);
+        }
+        if (AgentRouteDecision.ROUTE_PLAN_EXECUTE.equals(route)) {
+            plannerNode.invoke(state);
+            AgentRunResult result = executePlannedState(state);
+            result.setModelCallCount(result.getModelCallCount() + 2);
+            return result;
+        }
+        if (AgentRouteDecision.ROUTE_DIRECT_ANSWER.equals(route)) {
+            emit(context, sink, RuntimeEventType.AGENT_HANDOFF, "路由到直接回答",
+                    "RouterAgent 判断本轮无需工作区工具，交给 DirectAnswerAgent 直接回答", Map.of(
+                            "mode", "AUTO",
+                            "route", decision.getRoute(),
+                            "effectiveRoute", route,
+                            "intent", decision.getIntent()
+                    ));
+            AgentRunResult result = agentScopeRuntimeAdapter.executeDirectAnswer(context, sink);
+            result.setModelCallCount(result.getModelCallCount() + 1);
+            return result;
+        }
+
+        emit(context, sink, RuntimeEventType.AGENT_HANDOFF, "路由到单体 Agent",
+                "RouterAgent 判断本轮适合交给原 ReAct Coding Agent 处理", Map.of(
+                        "mode", "AUTO",
+                        "route", decision.getRoute(),
+                        "effectiveRoute", route,
+                        "intent", decision.getIntent()
+                ));
+        AgentRunResult result = agentScopeRuntimeAdapter.execute(context, sink);
+        result.setModelCallCount(result.getModelCallCount() + 1);
+        return result;
+    }
+
+    private AgentRunResult executePlannedState(MultiAgentState state) {
         emitPlanSteps(state, "in_progress", "ExecutorAgent 开始执行计划步骤");
 
         AgentRunResult result = executorNode.execute(state);
@@ -79,12 +142,26 @@ public class MultiAgentOrchestrator {
 
         String stepStatus = AgentRunStatus.COMPLETED.name().equals(result.getStatus()) ? "completed" : "failed";
         emitPlanSteps(state, stepStatus, "ExecutorAgent 已结束计划执行");
-        emit(context, sink, RuntimeEventType.AGENT_HANDOFF, "Executor 执行结束",
+        RuntimeContext context = state.getRuntimeContext();
+        emit(context, state.getSink(), RuntimeEventType.AGENT_HANDOFF, "Executor 执行结束",
                 "ExecutorAgent 已返回执行结果", Map.of(
-                        "mode", "PLAN_EXECUTE",
+                        "mode", state.getMode(),
                         "node", executorNode.nodeName(),
                         "status", result.getStatus()
                 ));
+        return result;
+    }
+
+    private AgentRunResult buildPlanOnlyResult(RuntimeContext context, MultiAgentState state, AgentNodeResult nodeResult) {
+        AgentRunResult result = new AgentRunResult();
+        result.setRunId(context.getRunId());
+        result.setConversationId(context.getConversationId());
+        result.setTraceId(context.getTraceId());
+        result.setAnswer(formatPlanAnswer(state.getPlan(), nodeResult));
+        result.setInputTokens(estimateTokens(state.getTask()));
+        result.setOutputTokens(estimateTokens(result.getAnswer()));
+        result.setModelCallCount(2);
+        result.setStatus(AgentRunStatus.COMPLETED.name());
         return result;
     }
 
@@ -134,6 +211,19 @@ public class MultiAgentOrchestrator {
                             "tools", step.getTools() != null ? step.getTools() : List.of()
                     ));
         }
+    }
+
+    private void emitRouteSelected(RuntimeContext context, RuntimeEventSink sink, AgentRouteDecision decision) {
+        emit(context, sink, RuntimeEventType.ROUTE_SELECTED, "路由已选择",
+                decision.getReason(), Map.of(
+                        "route", safe(decision.getRoute()),
+                        "effectiveRoute", safe(decision.effectiveRoute()),
+                        "intent", safe(decision.getIntent()),
+                        "riskLevel", safe(decision.getRiskLevel()),
+                        "confidence", decision.getConfidence(),
+                        "requiresWorkspaceEvidence", decision.isRequiresWorkspaceEvidence(),
+                        "requiresReview", decision.isRequiresReview()
+                ));
     }
 
     private void emit(RuntimeContext context, RuntimeEventSink sink, RuntimeEventType type,

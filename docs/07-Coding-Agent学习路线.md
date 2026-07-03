@@ -19,7 +19,7 @@
 | 11 | 平台级 ToolGuard / Interrupt | 已完成第一轮 | Bash 已走平台 ASK、approval-stream 直接执行挂起工具 |
 | 12 | fallback 与治理增强 | 未开始 | 模型 fallback、工具 fallback、运行失败恢复 |
 | 13 | 回滚和补偿 | 未开始 | 文件快照、多文件事务、run 失败后的恢复策略 |
-| 14 | 多 Agent / 计划型 Agent | 已完成第二轮雏形 | 已接入 PLAN_ONLY、PlannerAgent、计划卡片执行和 ExecutorAgent |
+| 14 | 多 Agent / 智能路由 | 已完成第三轮雏形 | 已接入 PLAN_ONLY、PlannerAgent、ExecutorAgent 和 RouterAgent AUTO 路由 |
 | 15 | 产品化治理 | 未开始 | 审计、限流、fallback、workspace 管理和前端体验打磨 |
 
 ## 已完成内容
@@ -315,7 +315,7 @@ docs/15-平台级ToolGuard与Interrupt设计记录.md
 - run 失败后的补偿策略。
 - git / worktree 级隔离。
 
-### 14. 多 Agent / 计划型 Agent
+### 14. 多 Agent / 智能路由
 
 已完成第一轮：
 
@@ -334,12 +334,21 @@ docs/15-平台级ToolGuard与Interrupt设计记录.md
 - `ExecutorAgent` 第一版复用原单体 ReAct Coding Agent 的工具执行能力。
 - 执行开始和结束时通过 `PLAN_STEP_STATUS_CHANGED` 更新计划步骤状态。
 
+已完成第三轮雏形：
+
+- 普通输入默认进入 `AUTO` 模式。
+- `RouterAgent` 输出结构化路由决策。
+- 新增 `ROUTE_SELECTED` 事件，前端运行面板可观察路由结果。
+- `Orchestrator` 根据路由结果选择 `SINGLE_AGENT`、`PLAN_ONLY` 或 `PLAN_EXECUTE`。
+- 显式 `/plan` 和计划卡片执行仍然优先于智能路由。
+
 后续要学习和实现：
 
 - Plan Agent。
 - Observe Agent。
 - Execute Agent。
 - Review Agent。
+- RouterAgent 增强。
 - 子 Agent 隔离上下文。
 - 任务拆解和结果合并。
 
@@ -378,5 +387,5 @@ Agent 请求完整生命周期 ✅
 Checkpoint 工具审批恢复第一轮 ✅
 平台级 ToolGuard / Interrupt 第一轮 ✅
 fallback 与治理增强
-多 Agent 编排第二轮：PLAN_ONLY + PlannerAgent + ExecutorAgent 雏形 ✅
+多 Agent 编排第三轮：RouterAgent + PlannerAgent + ExecutorAgent 雏形 ✅
 ```

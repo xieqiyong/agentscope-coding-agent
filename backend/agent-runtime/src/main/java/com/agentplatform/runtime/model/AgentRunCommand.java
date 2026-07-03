@@ -34,7 +34,7 @@ public class AgentRunCommand {
     private String message;
 
     /**
-     * 运行模式。默认 SINGLE_AGENT；/plan 会转换成 PLAN_ONLY。
+     * 运行模式。默认 AUTO；/plan 会转换成 PLAN_ONLY，计划卡片执行会转换成 PLAN_EXECUTE。
      */
     private String runMode;
 

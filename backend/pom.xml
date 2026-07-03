@@ -33,7 +33,7 @@
 
     <properties>
         <java.version>17</java.version>
-        <agentscope.version>2.0.0-RC1</agentscope.version>
+        <agentscope.version>2.0.0-RC3</agentscope.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     </properties>

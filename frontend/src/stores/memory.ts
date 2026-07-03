@@ -18,11 +18,14 @@ export const useMemoryStore = defineStore('memory', () => {
   )
 
   async function fetchMemories(workspaceId: string) {
+    console.log('[MemoryStore] fetchMemories 被调用，workspaceId =', workspaceId)
     loading.value = true
     try {
       const res: any = await memoryApi.list(workspaceId)
+      console.log('[MemoryStore] 记忆接口返回：', res)
       memories.value = normalizeMemories(res.data || [])
-    } catch {
+    } catch (e) {
+      console.warn('[MemoryStore] 记忆接口调用失败：', e)
       memories.value = []
     } finally {
       loading.value = false

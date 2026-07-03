@@ -43,7 +43,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, watchEffect } from 'vue'
 import Button from 'primevue/button'
 import { useMemoryStore } from '@/stores/memory'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -62,9 +62,15 @@ const tabs: { label: string; value: MemoryStatus | 'ALL' }[] = [
   { label: '冲突', value: 'CONFLICT' },
 ]
 
-onMounted(() => {
-  if (workspaceStore.currentWorkspace) {
-    memoryStore.fetchMemories(workspaceStore.currentWorkspace.id)
+console.log('[MemoryPanel] 组件已挂载')
+
+// 用 watchEffect：立即执行一次 + 自动追踪 currentWorkspace 变化，
+// 避免子组件 onMounted 早于父组件、watch 注册时机导致漏取的问题。
+watchEffect(() => {
+  const workspaceId = workspaceStore.currentWorkspace?.id
+  console.log('[MemoryPanel] watchEffect 触发，当前 workspaceId =', workspaceId)
+  if (workspaceId) {
+    memoryStore.fetchMemories(workspaceId)
   }
 })
 </script>

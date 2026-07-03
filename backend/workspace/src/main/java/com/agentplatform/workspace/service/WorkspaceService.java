@@ -9,11 +9,17 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 /**
  * 工作区应用服务。
@@ -103,6 +109,33 @@ public class WorkspaceService {
         return result;
     }
 
+    /**
+     * 浏览本机磁盘和目录。
+     * 只返回目录，不返回文件，给注册工作区弹窗选择根目录使用。
+     */
+    public Map<String, Object> browseLocalDirectories(String path) {
+        Map<String, Object> result = new HashMap<>();
+        List<Map<String, Object>> roots = listLocalRoots();
+        result.put("roots", roots);
+
+        if (!StringUtils.hasText(path)) {
+            result.put("currentPath", null);
+            result.put("parentPath", null);
+            result.put("entries", roots);
+            return result;
+        }
+
+        Path current = Path.of(path).toAbsolutePath().normalize();
+        if (!Files.isDirectory(current, LinkOption.NOFOLLOW_LINKS)) {
+            throw new BusinessException(400, "目录不存在或不可访问");
+        }
+
+        result.put("currentPath", current.toString());
+        result.put("parentPath", current.getParent() != null ? current.getParent().toString() : null);
+        result.put("entries", listChildDirectories(current));
+        return result;
+    }
+
     private void buildTree(Path root, Path current, List<Map<String, Object>> result,
                            int depth, int maxDepth) {
         if (depth >= maxDepth) return;
@@ -145,5 +178,56 @@ public class WorkspaceService {
         return ".git".equals(name) || "node_modules".equals(name) || "target".equals(name)
                 || ".idea".equals(name) || ".vscode".equals(name) || "__pycache__".equals(name)
                 || ".gradle".equals(name) || "build".equals(name) || "dist".equals(name);
+    }
+
+    private List<Map<String, Object>> listLocalRoots() {
+        List<Map<String, Object>> roots = new ArrayList<>();
+        File[] files = File.listRoots();
+        if (files == null) {
+            return roots;
+        }
+        for (File file : files) {
+            if (file == null || !file.exists()) {
+                continue;
+            }
+            Map<String, Object> item = new HashMap<>();
+            String path = file.toPath().toAbsolutePath().normalize().toString();
+            item.put("name", path);
+            item.put("path", path);
+            item.put("root", true);
+            roots.add(item);
+        }
+        roots.sort(Comparator.comparing(item -> String.valueOf(item.get("path")).toLowerCase()));
+        return roots;
+    }
+
+    private List<Map<String, Object>> listChildDirectories(Path current) {
+        List<Map<String, Object>> entries = new ArrayList<>();
+        try (Stream<Path> stream = Files.list(current)) {
+            stream
+                    .filter(path -> Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS))
+                    .filter(this::isVisibleDirectory)
+                    .sorted(Comparator.comparing(path -> path.getFileName().toString().toLowerCase()))
+                    .forEach(path -> entries.add(directoryEntry(path)));
+            return entries;
+        } catch (IOException | SecurityException e) {
+            throw new BusinessException(400, "目录不可访问: " + current);
+        }
+    }
+
+    private boolean isVisibleDirectory(Path path) {
+        try {
+            return !Files.isHidden(path);
+        } catch (IOException | SecurityException ignored) {
+            return false;
+        }
+    }
+
+    private Map<String, Object> directoryEntry(Path path) {
+        Map<String, Object> item = new HashMap<>();
+        item.put("name", path.getFileName() != null ? path.getFileName().toString() : path.toString());
+        item.put("path", path.toAbsolutePath().normalize().toString());
+        item.put("root", false);
+        return item;
     }
 }

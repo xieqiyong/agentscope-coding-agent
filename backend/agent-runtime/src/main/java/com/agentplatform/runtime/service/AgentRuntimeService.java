@@ -149,6 +149,31 @@ public class AgentRuntimeService {
                 return result;
             }
 
+            if (isAuto(command)) {
+                AgentRunResult result = multiAgentOrchestrator.routeAndExecute(context, persistedSink);
+                if (AgentRunStatus.WAITING_APPROVAL.name().equals(result.getStatus())) {
+                    return result;
+                }
+                saveAssistantMessage(conversation.getId(), result.getAnswer());
+                MemoryCaptureResult memoryCaptureResult = captureMemory(command, conversation.getId(), userMessage.getId(), result.getAnswer());
+                lifecycleService.completeRun(run.getId(), result);
+                emit(persistedSink, run.getId(), traceId, RuntimeEventType.RUN_FINISHED, "运行完成",
+                        "智能路由运行已完成", Map.of(
+                                "status", AgentRunStatus.COMPLETED.name(),
+                                "inputTokens", result.getInputTokens(),
+                                "outputTokens", result.getOutputTokens(),
+                                "modelCallCount", result.getModelCallCount(),
+                                "memoryCaptured", memoryCaptureResult.captured(),
+                                "memoryActivated", memoryCaptureResult.activated(),
+                                "memoryPending", memoryCaptureResult.pending(),
+                                "memoryConflicts", memoryCaptureResult.conflicts(),
+                                "conversationId", conversation.getId(),
+                                "runMode", "AUTO"
+                        ), elapsedMs(started));
+                result.setStatus("COMPLETED");
+                return result;
+            }
+
             AgentRunResult result = agentScopeRuntimeAdapter.execute(context, persistedSink);
             if (AgentRunStatus.WAITING_APPROVAL.name().equals(result.getStatus())) {
                 return result;
@@ -291,7 +316,7 @@ public class AgentRuntimeService {
             return;
         }
         if (!StringUtils.hasText(command.getRunMode())) {
-            command.setRunMode("SINGLE_AGENT");
+            command.setRunMode("AUTO");
         }
     }
 
@@ -301,6 +326,10 @@ public class AgentRuntimeService {
 
     private boolean isPlanExecute(AgentRunCommand command) {
         return "PLAN_EXECUTE".equalsIgnoreCase(command.getRunMode());
+    }
+
+    private boolean isAuto(AgentRunCommand command) {
+        return "AUTO".equalsIgnoreCase(command.getRunMode());
     }
 
     private void validateApprovalCommand(AgentApprovalCommand command) {

@@ -9,6 +9,9 @@ export const workspaceApi = {
   create: (data: { name: string; rootPath: string; description?: string }): Promise<any> =>
     api.post('/workspaces', data),
 
+  browseDirectories: (data: { path?: string | null }): Promise<any> =>
+    api.post('/workspaces/browse-directories', data),
+
   update: (id: string, data: Partial<Workspace>): Promise<any> =>
     api.put(`/workspaces/${id}`, data),
 

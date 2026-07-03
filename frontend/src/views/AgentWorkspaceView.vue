@@ -1,11 +1,13 @@
-﻿<template>
+<template>
   <div class="workspace-layout">
-    <TopBar />
+    <LeftSidebar />
 
-    <div class="workspace-body">
-      <LeftSidebar />
-      <ChatPanel @review-confirmation="openDiffReview" />
-      <RightPanel />
+    <div class="workspace-main">
+      <TopBar />
+      <div class="workspace-body">
+        <ChatPanel @review-confirmation="openDiffReview" />
+        <RightPanel />
+      </div>
     </div>
 
     <!-- Diff review modal -->
@@ -40,7 +42,7 @@ const activeConfirmation = computed<Confirmation | null>(
   () => selectedConfirmation.value || null,
 )
 
-// 启动时恢复上次工作区和会话，刷新页面后聊天记录不会丢。
+// 启动时恢复上次工作区。selectWorkspace 会触发下面的 watch 统一加载会话，避免 onMounted + watch 双触发。
 onMounted(async () => {
   await workspaceStore.fetchWorkspaces()
   const restoredWorkspaceId = workspaceStore.restoreWorkspaceId()
@@ -50,11 +52,10 @@ onMounted(async () => {
   if (!workspace) return
 
   await workspaceStore.selectWorkspace(workspace.id)
-  await chatStore.fetchSessions(workspace.id)
-  await restoreConversation()
 })
 
-// 工作区切换时重新加载会话。
+// 唯一会话加载入口：工作区变化时拉取会话列表并恢复当前会话。
+// AgentWorkspaceView 始终 mounted，比放在 SessionList 更稳定（不会因侧栏折叠重复挂载）。
 watch(
   () => workspaceStore.currentWorkspace?.id,
   async (newId, oldId) => {
@@ -93,13 +94,26 @@ function onDiffResolved() {
 .workspace-layout {
   height: 100vh;
   display: flex;
-  flex-direction: column;
   overflow: hidden;
   background: var(--bg-main);
 }
 
+.workspace-main {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(circle at 50% 34%, rgba(217, 109, 74, 0.06), transparent 28rem),
+    var(--bg-main);
+}
+
 .workspace-body {
   flex: 1;
+  min-height: 0;
+  position: relative;
   display: flex;
   overflow: hidden;
 }

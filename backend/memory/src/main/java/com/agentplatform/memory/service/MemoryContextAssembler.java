@@ -25,11 +25,13 @@ public class MemoryContextAssembler {
     private MemoryEntryRepository memoryEntryRepository;
 
     public List<MemoryEntryEntity> loadActiveMemories(Long workspaceId, String userId) {
-        if (workspaceId == null || !StringUtils.hasText(userId)) {
+        if (workspaceId == null) {
             return List.of();
         }
-        List<MemoryEntryEntity> rows = memoryEntryRepository.findByWorkspaceIdAndUserIdAndStatusOrderByUpdatedAtDesc(
-                workspaceId, userId, MemoryStatus.ACTIVE.name());
+        // 单用户 MVP 阶段：按 workspace 维度加载 ACTIVE 记忆，不强制按 userId 过滤，
+        // 保证手动创建和 Agent 自动捕获的 ACTIVE 记忆都能注入 prompt。
+        List<MemoryEntryEntity> rows = memoryEntryRepository.findByWorkspaceIdAndStatusOrderByUpdatedAtDesc(
+                workspaceId, MemoryStatus.ACTIVE.name());
         return selectInjectableMemories(rows);
     }
 

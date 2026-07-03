@@ -40,6 +40,12 @@ public class WorkspaceController {
         return ApiResponse.success(entity);
     }
 
+    @PostMapping("/browse-directories")
+    public ApiResponse<Map<String, Object>> browseDirectories(@RequestBody(required = false) Map<String, String> body) {
+        String path = body != null ? body.get("path") : null;
+        return ApiResponse.success(workspaceService.browseLocalDirectories(path));
+    }
+
     @PutMapping("/{id}")
     public ApiResponse<WorkspaceEntity> update(@PathVariable Long id,
                                                @RequestBody Map<String, String> body) {

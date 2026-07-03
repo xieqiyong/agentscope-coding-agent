@@ -1,9 +1,10 @@
 # 多 Agent 第一轮实现记录
 
-这份文档记录多 Agent 学习的第一轮和第二轮：
+这份文档记录多 Agent 学习的第一轮、第二轮和第三轮：
 
 - 第一轮：先做一个只规划、不执行、不改代码的 `/plan` 模式。
 - 第二轮：在计划卡片上增加“执行计划”，让 Orchestrator 把计划交给 ExecutorAgent 执行。
+- 第三轮：普通输入默认进入 `AUTO`，由 RouterAgent 智能判断下一跳。
 
 目标不是马上把系统拆成很多智能体，而是先把“编排器 + 节点 + 状态 + 事件”的骨架搭起来。这样后续接入 Executor、Reviewer、SubAgent、A2A 协议时，不需要推翻现有 Agent Runtime。
 
@@ -50,6 +51,38 @@ ExecutorAgent
 - 原来的单体 Agent 已经能通过 SSE 输出工具轨迹。
 
 所以第二轮先做“角色拆分和编排入口”，不急着重写执行器。
+
+第三轮变成：
+
+```text
+普通用户输入
+  ↓
+Orchestrator
+  ↓
+RouterAgent
+  ↓
+ROUTE_SELECTED
+  ↓
+DIRECT_ANSWER / SINGLE_AGENT / PLAN_ONLY / PLAN_EXECUTE
+```
+
+第三轮的目标是把“用户手动选模式”升级为“系统自动判断流程”。
+
+显式命令仍然优先：
+
+```text
+/plan xxx
+  -> PLAN_ONLY
+
+计划卡片点击执行
+  -> PLAN_EXECUTE
+
+普通输入
+  -> AUTO
+  -> RouterAgent 判断
+```
+
+这不是 A2A。它还是同一个后端进程里的本地多 Agent 编排。
 
 ## 为什么先做 PLAN_ONLY
 
@@ -167,6 +200,14 @@ Orchestrator -> PlannerAgent -> Finish
 Orchestrator -> ExecutorAgent -> Finish / WaitingApproval
 ```
 
+第三轮增加 Router 分支：
+
+```text
+Orchestrator -> RouterAgent -> ROUTE_SELECTED
+                       ↓
+        Direct / Single / PlanOnly / PlanExecute
+```
+
 后续可以扩展为：
 
 ```text
@@ -211,6 +252,41 @@ PlannerAgent 只负责回答一个问题：
 
 这能避免一个常见问题：模型还没读代码，就直接开始改。
 
+## RouterAgent 的边界
+
+RouterAgent 只负责回答一个问题：
+
+```text
+这件事应该走哪条流程？
+```
+
+当前可选 route：
+
+```text
+DIRECT_ANSWER
+SINGLE_AGENT
+PLAN_ONLY
+PLAN_EXECUTE
+```
+
+含义：
+
+- `DIRECT_ANSWER`：通用解释、学习讨论、概念问题，不需要读取工作区。
+- `SINGLE_AGENT`：需要读取工作区或调查现象，但用户没有明确要求改代码。
+- `PLAN_ONLY`：用户明确要求先给计划、方案、设计，不要执行。
+- `PLAN_EXECUTE`：用户要求实现、修复、修改、重构、接入、删除、生成文件或执行编码任务。
+
+当前 `DIRECT_ANSWER` 和 `SINGLE_AGENT` 都会交给原来的单体 ReAct Coding Agent 处理。
+
+原因是原单体 Agent 的 system prompt 已经要求：
+
+```text
+通用问题直接回答
+依赖项目事实才读取工作区
+```
+
+后续如果要进一步收窄，可以增加真正的 `DirectAnswerAgent`，不注册工具，只回答通用问题。
+
 ## 前端交互
 
 用户在输入框里输入：
@@ -238,6 +314,7 @@ PlannerAgent 只负责回答一个问题：
 
 ```text
 AGENT_HANDOFF
+ROUTE_SELECTED
 PLAN_CREATED
 PLAN_STEP_STATUS_CHANGED
 ```
@@ -248,6 +325,7 @@ PLAN_STEP_STATUS_CHANGED
 RUN_STARTED
 CONTEXT_LOADED
 AGENT_HANDOFF
+ROUTE_SELECTED
 MODEL_CALL_STARTED
 MODEL_CALL_FINISHED
 PLAN_CREATED
@@ -290,7 +368,8 @@ RUN_STATUS_CHANGED: WAITING_APPROVAL
 - 计划步骤状态是粗粒度的：执行开始时统一变成 `in_progress`，执行结束时统一变成 `completed` 或 `failed`。
 - 如果执行中断在工具审批，计划步骤会保持 `in_progress`，后续需要把审批恢复也带上 plan 上下文。
 - 当前没有 ReviewerAgent，执行结果还没有独立审查节点。
-- 当前没有复杂 Router，还是固定路径。
+- RouterAgent 已接入第一版，但还没有 ReviewerAgent、ObserverAgent 和复杂循环。
+- `DIRECT_ANSWER` 仍然复用单体 ReAct Coding Agent，后续可以拆成不注册工具的 DirectAnswerAgent。
 
 ## 后续演进
 
@@ -298,9 +377,10 @@ RUN_STATUS_CHANGED: WAITING_APPROVAL
 
 1. 专用 `ExecutorAgent`：从复用旧单体 Agent，演进为更窄工具集、更强步骤控制的专用执行节点。
 2. `ReviewerAgent`：检查 diff、工具结果和风险点。
-3. `Router`：根据状态决定下一步进入哪个 Agent。
-4. `SubAgent`：给某类任务开独立上下文，避免污染主会话。
-5. `A2A`：把 Agent 间通信抽象成协议，而不是本地方法调用。
+3. `ObserverAgent`：专门读取代码、日志、配置并产出证据，不负责修改。
+4. `Router` 增强：结合 skills、MCP、风险等级、历史效果做更细路由。
+5. `SubAgent`：给某类任务开独立上下文，避免污染主会话。
+6. `A2A`：把 Agent 间通信抽象成协议，而不是本地方法调用。
 
 核心原则：
 

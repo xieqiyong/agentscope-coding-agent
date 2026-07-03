@@ -30,12 +30,19 @@ const uiStore = useUiStore()
 <style scoped>
 .right-panel {
   width: var(--right-panel-width);
-  background: var(--bg-sidebar);
-  border-left: 1px solid var(--border-color);
-  flex-shrink: 0;
+  position: absolute;
+  top: 12px;
+  right: 18px;
+  bottom: 18px;
+  z-index: 8;
+  background: rgba(255, 254, 250, 0.94);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  backdrop-filter: blur(12px);
 }
 
 .panel-tabs {
@@ -74,7 +81,7 @@ const uiStore = useUiStore()
 }
 
 .tab-btn.active {
-  color: var(--accent);
+  color: var(--ink);
   border-bottom-color: var(--accent);
 }
 

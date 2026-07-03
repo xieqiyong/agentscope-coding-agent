@@ -825,12 +825,13 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  function addUserMessage(content: string) {
+  function addUserMessage(content: string, options?: { messageKind?: 'plan-execute' }) {
     messages.value.push({
       id: `user-${Date.now()}`,
       sessionId: currentSession.value?.id || '',
       role: 'user',
       content,
+      messageKind: options?.messageKind,
       timestamp: new Date().toISOString(),
     })
   }

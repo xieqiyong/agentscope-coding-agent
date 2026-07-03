@@ -35,13 +35,14 @@ public class MemoryApplicationService {
         if (workspaceId == null) {
             throw new BusinessException(400, "workspaceId 不能为空");
         }
-        String normalizedUserId = normalizeUserId(userId);
+        // 单用户 MVP 阶段：记忆按 workspace 维度查询，不强制按 userId 过滤，
+        // 否则手动创建（userId=default）和 Agent 自动捕获（userId=登录用户）的记忆会互相看不到。
         List<MemoryEntryEntity> entries;
         if (StringUtils.hasText(status) && !"ALL".equalsIgnoreCase(status)) {
-            entries = memoryEntryRepository.findByWorkspaceIdAndUserIdAndStatusOrderByUpdatedAtDesc(
-                    workspaceId, normalizedUserId, normalizeStatus(status).name());
+            entries = memoryEntryRepository.findByWorkspaceIdAndStatusOrderByUpdatedAtDesc(
+                    workspaceId, normalizeStatus(status).name());
         } else {
-            entries = memoryEntryRepository.findByWorkspaceIdAndUserIdOrderByUpdatedAtDesc(workspaceId, normalizedUserId);
+            entries = memoryEntryRepository.findByWorkspaceIdOrderByUpdatedAtDesc(workspaceId);
         }
         return entries.stream().map(this::toDto).toList();
     }

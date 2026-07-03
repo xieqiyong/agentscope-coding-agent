@@ -72,6 +72,7 @@ public class AgentScopeRuntimeAdapter {
         validateModel(context);
         long startedNanos = System.nanoTime();
 
+        emitSessionBindingStarted(context, sink);
         AgentScopeSessionBinding sessionBinding = sessionManager.bind(context);
         emitSessionLoaded(context, sink, sessionBinding, elapsedMs(startedNanos));
 
@@ -92,6 +93,22 @@ public class AgentScopeRuntimeAdapter {
         }
     }
 
+    public AgentRunResult executeDirectAnswer(RuntimeContext context, RuntimeEventSink sink) {
+        validateModel(context);
+        AgentScopeTraceRecorder recorder = new AgentScopeTraceRecorder(context, sink);
+        try (ReActAgent agent = buildDirectAnswerAgent(context)) {
+            List<Msg> inputMessages = buildDirectAnswerMessages(context);
+            agent.streamEvents(inputMessages)
+                    .doOnNext(recorder::record)
+                    .collectList()
+                    .block(Duration.ofSeconds(directAnswerTimeoutSeconds(context)));
+
+            return buildResult(context, recorder, directAnswerInputText(context));
+        } catch (Exception e) {
+            throw new RuntimeException("DirectAnswerAgent 执行失败: " + e.getMessage(), e);
+        }
+    }
+
     public AgentRunResult resumeAfterApproval(RuntimeContext context,
                                               ToolApprovalService.ToolApprovalPayload payload,
                                               boolean approved,
@@ -99,6 +116,7 @@ public class AgentScopeRuntimeAdapter {
         validateModel(context);
         long startedNanos = System.nanoTime();
 
+        emitSessionBindingStarted(context, sink);
         AgentScopeSessionBinding sessionBinding = sessionManager.bind(context);
         if (!sessionBinding.isEnabled()) {
             throw new BusinessException(409, "AgentScope Session 未启用，无法恢复等待审批的工具调用");
@@ -131,13 +149,24 @@ public class AgentScopeRuntimeAdapter {
                 .maxIters(context.getMaxIterations());
 
         if (sessionBinding.isEnabled()) {
-            agentBuilder.session(sessionBinding.getSession())
-                    .sessionKey(sessionBinding.getSessionKey())
+            agentBuilder.stateStore(sessionBinding.getStateStore())
+                    .defaultSessionId(sessionBinding.getSessionId())
                     .enablePendingToolRecovery(true);
         }
         ReActAgent agent = agentBuilder.build();
         applyRuntimePermissionRules(agent, permissionContext);
         return agent;
+    }
+
+    private ReActAgent buildDirectAnswerAgent(RuntimeContext context) {
+        return ReActAgent.builder()
+                .name("direct-answer-agent")
+                .description("无需工作区工具的直接回答智能体")
+                .sysPrompt(buildDirectAnswerPrompt(context))
+                .model(buildModel(context))
+                .toolkit(new Toolkit())
+                .maxIters(1)
+                .build();
     }
 
     private void applyRuntimePermissionRules(ReActAgent agent, PermissionContextState permissionContext) {
@@ -270,10 +299,57 @@ public class AgentScopeRuntimeAdapter {
         return messages;
     }
 
+    private List<Msg> buildDirectAnswerMessages(RuntimeContext context) {
+        List<Msg> messages = new ArrayList<>();
+        for (ConversationMessageEntity message : context.getRecentMessages()) {
+            if (message == null || !StringUtils.hasText(message.getContent())) {
+                continue;
+            }
+            if ("USER".equalsIgnoreCase(message.getRole())) {
+                messages.add(new UserMessage(message.getContent()));
+            } else if ("ASSISTANT".equalsIgnoreCase(message.getRole())) {
+                messages.add(new AssistantMessage(message.getContent()));
+            }
+        }
+        if (messages.isEmpty()) {
+            messages.add(new UserMessage(context.getCommand().getMessage()));
+        }
+        return messages;
+    }
+
+    private String buildDirectAnswerPrompt(RuntimeContext context) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("""
+                你是 DirectAnswerAgent，负责回答不需要读取工作区、不需要执行工具的普通问题。
+                要求：
+                1. 默认使用中文回答，表达直接、清晰、简洁。
+                2. 不要声称已经读取文件、执行命令或检查工作区。
+                3. 如果用户问题必须依赖项目文件或运行结果，请说明需要切换到工作区分析流程。
+                """);
+        if (context.getActiveMemories() != null && !context.getActiveMemories().isEmpty()) {
+            builder.append("\n可参考的长期记忆：\n");
+            context.getActiveMemories().stream()
+                    .limit(8)
+                    .forEach(memory -> builder
+                            .append("- ")
+                            .append(safe(memory.getMemoryType()))
+                            .append(": ")
+                            .append(safe(memory.getContent()))
+                            .append("\n"));
+        }
+        return builder.toString();
+    }
+
     private List<Msg> currentUserMessageOnly(RuntimeContext context) {
         List<Msg> messages = new ArrayList<>();
         messages.add(new UserMessage(context.getCommand().getMessage()));
         return messages;
+    }
+
+    private void emitSessionBindingStarted(RuntimeContext context, RuntimeEventSink sink) {
+        sink.emit(RuntimeEvent.of(context.getRunId(), context.getTraceId(), RuntimeEventType.RUN_STATUS_CHANGED,
+                "AgentScope 状态绑定中", "正在连接并检查 AgentScope 状态存储",
+                Map.of("sessionType", safe(context.getAgentScopeSessionType())), elapsedMs(context.getRunStartedNanos())));
     }
 
     private void emitSessionLoaded(RuntimeContext context, RuntimeEventSink sink,
@@ -308,7 +384,35 @@ public class AgentScopeRuntimeAdapter {
         return sb.toString();
     }
 
+    private String directAnswerInputText(RuntimeContext context) {
+        StringBuilder sb = new StringBuilder();
+        for (ConversationMessageEntity message : context.getRecentMessages()) {
+            if (message != null && message.getContent() != null) {
+                sb.append(message.getRole()).append(": ").append(message.getContent()).append("\n");
+            }
+        }
+        if (sb.length() == 0) {
+            sb.append("USER: ").append(context.getCommand().getMessage());
+        }
+        return sb.toString();
+    }
+
+    private long directAnswerTimeoutSeconds(RuntimeContext context) {
+        int timeoutSeconds = context.getTimeoutSeconds();
+        if (timeoutSeconds <= 0) {
+            return 60;
+        }
+        return Math.min(timeoutSeconds, 60);
+    }
+
+    private String safe(Object value) {
+        return value == null ? "" : String.valueOf(value);
+    }
+
     private long elapsedMs(long startedNanos) {
+        if (startedNanos <= 0) {
+            return 0;
+        }
         return (System.nanoTime() - startedNanos) / 1_000_000;
     }
 }

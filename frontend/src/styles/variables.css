@@ -1,36 +1,39 @@
 :root {
   /* Colors */
-  --bg-main: #f8fafc;
-  --bg-sidebar: #ffffff;
-  --bg-topbar: #ffffff;
-  --bg-panel: #ffffff;
-  --bg-hover: #f1f5f9;
-  --bg-chat-user: #eff6ff;
-  --bg-chat-agent: #ffffff;
-  --bg-tool-card: #f8fafc;
+  --bg-main: #fbfaf7;
+  --bg-sidebar: #f6f3ec;
+  --bg-topbar: #fbfaf7;
+  --bg-panel: #fffefa;
+  --bg-hover: #ede8dd;
+  --bg-chat-user: #ede7dc;
+  --bg-chat-agent: transparent;
+  --bg-tool-card: #f8f4ea;
   --bg-diff-added: #dcfce7;
   --bg-diff-removed: #fee2e2;
-  --bg-input: #f1f5f9;
+  --bg-input: #fffefa;
 
-  --text-primary: #1e293b;
-  --text-secondary: #64748b;
-  --text-muted: #94a3b8;
+  --text-primary: #2f2a24;
+  --text-secondary: #6f665b;
+  --text-muted: #9a9186;
   --text-on-dark: #e2e8f0;
   --text-on-dark-muted: #94a3b8;
 
-  --border-color: #e2e8f0;
-  --border-tool: #bfdbfe;
+  --border-color: #dfd8cc;
+  --border-tool: #d7c8b4;
   --border-confirm: #fbbf24;
 
-  --accent: #3b82f6;
-  --accent-hover: #2563eb;
+  --accent: #d96d4a;
+  --accent-hover: #b95739;
+  --accent-soft: #f3d8c7;
+  --ink: #1f1b17;
+  --code-accent: #2563eb;
   --success: #22c55e;
   --danger: #ef4444;
   --warning: #f59e0b;
 
   /* Layout */
-  --topbar-height: 44px;
-  --sidebar-width: 260px;
+  --topbar-height: 60px;
+  --sidebar-width: 350px;
   --right-panel-width: 340px;
 
   /* Spacing */
@@ -41,6 +44,7 @@
   --spacing-xl: 32px;
 
   /* Typography */
+  --font-serif: Georgia, 'Times New Roman', serif;
   --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
   --font-size-xs: 0.75rem;
   --font-size-sm: 0.875rem;
@@ -53,6 +57,6 @@
   --radius-lg: 12px;
 
   /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --shadow-sm: 0 1px 2px rgba(47, 42, 36, 0.06);
+  --shadow-md: 0 14px 40px rgba(47, 42, 36, 0.12);
 }

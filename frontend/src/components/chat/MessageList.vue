@@ -42,23 +42,23 @@ const lastMessageIsStreaming = computed(() => {
 .message-list {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xs);
-  max-width: 800px;
+  gap: 6px;
+  max-width: 840px;
   margin: 0 auto;
-  padding: 0 var(--spacing-lg);
+  padding: 0 28px 24px;
 }
 
 .typing-indicator {
   display: flex;
   gap: 4px;
-  padding: var(--spacing-sm) var(--spacing-md);
+  padding: var(--spacing-sm) 0;
 }
 
 .dot {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--text-muted);
+  background: var(--accent);
   animation: bounce 1.4s infinite ease-in-out both;
 }
 
