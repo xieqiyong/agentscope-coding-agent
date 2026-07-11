@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS agents (
   name VARCHAR(128) NOT NULL COMMENT 'Agent 名称',
   description VARCHAR(512) NULL COMMENT 'Agent 描述',
   system_prompt TEXT NULL COMMENT '系统提示词',
+  skills_json LONGTEXT NULL COMMENT '绑定的 Skills 配置 JSON',
+  mcp_services_json LONGTEXT NULL COMMENT '绑定的 MCP 服务配置 JSON',
   model_config_id BIGINT NULL COMMENT '模型配置 ID',
   max_iterations INT NOT NULL DEFAULT 8 COMMENT '最大循环次数',
   timeout_seconds INT NOT NULL DEFAULT 120 COMMENT '单次执行超时时间',

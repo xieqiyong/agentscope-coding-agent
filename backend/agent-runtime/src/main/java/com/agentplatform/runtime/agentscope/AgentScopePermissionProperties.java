@@ -28,7 +28,7 @@ public class AgentScopePermissionProperties {
      * 需要确认的高风险工具名。
      */
     private List<String> approvalRequiredTools = new ArrayList<>(
-            List.of("write_file", "Write", "Edit", "apply_patch")
+            List.of("Write", "Edit", "apply_patch")
     );
 
     public boolean isEnabled() {

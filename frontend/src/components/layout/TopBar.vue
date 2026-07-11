@@ -21,7 +21,15 @@
           @change="onWorkspaceChange"
         />
         <span class="pill-divider">·</span>
-        <span class="pill-link">{{ sessionLabel }}</span>
+        <Select
+          v-model="selectedAgentId"
+          :options="agentOptions"
+          optionLabel="label"
+          optionValue="value"
+          placeholder="选择 Agent"
+          class="agent-select"
+          @change="onAgentChange"
+        />
       </div>
     </div>
 
@@ -34,6 +42,9 @@
       >
         <i class="pi pi-chart-line"></i>
       </button>
+      <router-link to="/agents" class="topbar-icon-btn" title="智能体">
+        <i class="pi pi-sitemap"></i>
+      </router-link>
       <!-- 设置 -->
       <router-link to="/settings" class="topbar-icon-btn" title="设置">
         <i class="pi pi-cog"></i>
@@ -49,31 +60,38 @@ import { ref, computed, watch } from 'vue'
 import Select from 'primevue/select'
 import { useUiStore } from '@/stores/ui'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { useChatStore } from '@/stores/chat'
+import { useAgentStore } from '@/stores/agent'
 import RegisterWorkspaceDialog from '@/components/workspace/RegisterWorkspaceDialog.vue'
 
 const uiStore = useUiStore()
 const workspaceStore = useWorkspaceStore()
-const chatStore = useChatStore()
+const agentStore = useAgentStore()
 
 const selectedWorkspaceId = ref<string | null>(workspaceStore.currentWorkspace?.id || null)
+const selectedAgentId = ref<string | null>(agentStore.currentAgent?.id || null)
 const showRegisterDialog = ref(false)
 
 const workspaceOptions = computed(() => workspaceStore.workspaceOptions)
-
-const sessionLabel = computed(() => {
-  if (chatStore.currentSession?.title) return chatStore.currentSession.title
-  return 'Coding Agent'
-})
+const agentOptions = computed(() => agentStore.agentOptions)
 
 watch(() => workspaceStore.currentWorkspace, (ws) => {
   if (ws) selectedWorkspaceId.value = ws.id
+})
+
+watch(() => agentStore.currentAgent, (agent) => {
+  selectedAgentId.value = agent?.id || null
 })
 
 async function onWorkspaceChange() {
   if (selectedWorkspaceId.value) {
     // 只切换工作区；会话列表由 AgentWorkspaceView 的 watch 统一加载，避免重复请求
     await workspaceStore.selectWorkspace(selectedWorkspaceId.value)
+  }
+}
+
+function onAgentChange() {
+  if (selectedAgentId.value) {
+    agentStore.selectAgent(selectedAgentId.value)
   }
 }
 </script>
@@ -142,6 +160,11 @@ async function onWorkspaceChange() {
   font-size: var(--font-size-xs);
 }
 
+.agent-select {
+  width: 168px;
+  font-size: var(--font-size-xs);
+}
+
 .topbar-icon-btn {
   width: 36px;
   height: 36px;
@@ -178,12 +201,24 @@ async function onWorkspaceChange() {
   --p-select-placeholder-color: var(--text-muted);
 }
 
-:deep(.workspace-select .p-select-label) {
+:deep(.agent-select) {
+  --p-select-background: transparent;
+  --p-select-border-color: transparent;
+  --p-select-hover-border-color: transparent;
+  --p-select-focus-border-color: transparent;
+  --p-select-shadow: none;
+  --p-select-color: var(--text-secondary);
+  --p-select-placeholder-color: var(--text-muted);
+}
+
+:deep(.workspace-select .p-select-label),
+:deep(.agent-select .p-select-label) {
   padding: 0;
   font-size: var(--font-size-sm);
 }
 
-:deep(.workspace-select .p-select-dropdown) {
+:deep(.workspace-select .p-select-dropdown),
+:deep(.agent-select .p-select-dropdown) {
   width: 20px;
 }
 
@@ -193,7 +228,7 @@ async function onWorkspaceChange() {
   }
 
   .pill-divider,
-  .pill-link {
+  .agent-select {
     display: none;
   }
 

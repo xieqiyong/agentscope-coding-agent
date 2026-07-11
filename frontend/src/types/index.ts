@@ -20,6 +20,36 @@ export interface FileNode {
   children?: FileNode[]
 }
 
+// ==================== Agent ====================
+
+export interface AgentDefinition {
+  id: string
+  workspaceId: string
+  name: string
+  description?: string
+  systemPrompt?: string
+  skillsJson?: string
+  mcpServicesJson?: string
+  modelConfigId?: string | number | null
+  maxIterations: number
+  timeoutSeconds: number
+  status: 'ENABLED' | 'DISABLED'
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface ToolDefinition {
+  id: string
+  name: string
+  description?: string
+  toolType: string
+  inputSchemaJson?: string
+  riskLevel: RiskLevel
+  enabled: boolean
+  createdAt?: string
+  updatedAt?: string
+}
+
 // ==================== Session ====================
 
 export interface Session {
@@ -145,7 +175,5 @@ export interface PatchFile {
   additions: number
   deletions: number
 }
-
-
 
 

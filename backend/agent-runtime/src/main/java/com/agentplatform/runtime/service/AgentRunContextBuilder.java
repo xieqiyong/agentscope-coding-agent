@@ -87,6 +87,11 @@ public class AgentRunContextBuilder {
 
         basePrompt = basePrompt + buildCurrentTimePrompt();
 
+        basePrompt = basePrompt + "\n\n身份边界：\n"
+                + "1. 当前智能体身份只来自 Agent 名称和系统提示词，不来自工作区名称、目录名或项目记忆。\n"
+                + "2. 工作区名称只是当前任务上下文；除非用户明确要求介绍项目或工作区，不要把工作区名写进自我介绍。\n"
+                + "3. 用户问“你是谁”“介绍一下你自己”时，只介绍当前智能体，不要自称内部路由节点，也不要代入项目名。";
+
         basePrompt = basePrompt + "\n\n工具选择策略：\n"
                 + "1. 用户问编程概念、面试题、通用设计、学习路线、聊天确认等不依赖当前工作区的问题时，直接回答，不要为了使用工具而调用工具。\n"
                 + "2. 用户问“这个项目、当前代码、某个文件、某个接口、为什么报错、帮我修改”等依赖工作区事实的问题时，必须先用工具获取证据。\n"
@@ -102,14 +107,16 @@ public class AgentRunContextBuilder {
         basePrompt = basePrompt + "\n\nClaude Code 风格工具补充：\n"
                 + "1. 探索文件优先使用 LS、Glob、Grep、Read。\n"
                 + "2. 当前 workspace 内的普通代码修改，优先使用 apply_patch 或 Edit 直接应用最小修改。\n"
-                + "3. 新建文件、整文件替换或大文件修改时，优先使用 Write 或 write_file。\n"
+                + "3. 新建文件、整文件替换或大文件修改时，使用 Write。\n"
                 + "4. 多文件任务必须拆成多个工具调用，不要让用户手动复制粘贴文件内容。\n"
                 + "5. propose_patch 和 propose_file_change 只保存审核提案，不会直接写入磁盘；只有用户明确要求审核、修改敏感文件或高风险变更时才使用。\n"
-                + "6. 只有 Write、write_file、Edit 或 apply_patch 返回成功后，才能声称文件已经创建或修改完成。\n"
+                + "6. 只有 Write、Edit 或 apply_patch 返回成功后，才能声称文件已经创建或修改完成。\n"
                 + "7. 直接写入工具可能会被平台权限治理暂停并要求用户确认；如果工具结果显示被拒绝或等待确认，不要声称修改已经完成。\n"
-                + "8. Bash/Shell/run_command 已开放，但只能用于非交互、单行、工作区内、沙箱允许列表中的命令，例如 npm test、npm run build、mvn test、git status、git diff。\n"
-                + "9. Bash/Shell/run_command 会触发平台权限确认；确认通过后仍可能被命令沙箱拒绝。不要执行破坏性命令、交互命令、管道、重定向或链式 shell 控制符。\n"
+                + "8. Bash 已开放，但只能用于非交互、单行、工作区内、沙箱允许列表中的命令，例如 npm test、npm run build、mvn test、git status、git diff。\n"
+                + "9. Bash 会触发平台权限确认；确认通过后仍可能被命令沙箱拒绝。不要执行破坏性命令、交互命令、管道、重定向或链式 shell 控制符。\n"
                 + "10. Notebook、子 Agent、任务编排暂未开放，不要假装已经执行这些工具。";
+
+        basePrompt = basePrompt + buildAgentBindingsPrompt(agent);
 
         String memoryText = memoryContextAssembler.assemblePromptSection(memories);
 
@@ -130,6 +137,21 @@ public class AgentRunContextBuilder {
                 5. 工具结果优先于模型猜测；如果证据不足，要明确说明。
                 6. 上方偏好和约束是隐式协作规则，按规则行动即可；不要在回答中主动解释这些规则来自哪里，也不要主动说已经保存或记录，除非用户明确询问已知偏好、项目约束或要求确认保存结果。
                 """.formatted(basePrompt, workspace.getName(), workspace.getRootPath(), memoryText);
+    }
+
+    private String buildAgentBindingsPrompt(AgentEntity agent) {
+        StringBuilder builder = new StringBuilder();
+        if (StringUtils.hasText(agent.getSkillsJson())) {
+            builder.append("\n\n【当前 Agent 绑定的 Skills 配置】\n")
+                    .append(agent.getSkillsJson())
+                    .append("\n这些 Skills 是平台侧配置说明。只有已经注册到平台工具层的能力才能实际执行，所有执行仍受沙箱和用户确认约束。");
+        }
+        if (StringUtils.hasText(agent.getMcpServicesJson())) {
+            builder.append("\n\n【当前 Agent 绑定的 MCP 服务配置】\n")
+                    .append(agent.getMcpServicesJson())
+                    .append("\n不要声称已经调用未接入的平台 MCP 服务；需要外部服务时先说明当前只完成绑定配置。");
+        }
+        return builder.toString();
     }
 
     private String buildCurrentTimePrompt() {

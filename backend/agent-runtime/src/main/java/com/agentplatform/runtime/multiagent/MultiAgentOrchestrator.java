@@ -109,7 +109,7 @@ public class MultiAgentOrchestrator {
         }
         if (AgentRouteDecision.ROUTE_DIRECT_ANSWER.equals(route)) {
             emit(context, sink, RuntimeEventType.AGENT_HANDOFF, "路由到直接回答",
-                    "RouterAgent 判断本轮无需工作区工具，交给 DirectAnswerAgent 直接回答", Map.of(
+                    "RouterAgent 判断本轮无需工作区工具，使用当前智能体的轻量直答模式", Map.of(
                             "mode", "AUTO",
                             "route", decision.getRoute(),
                             "effectiveRoute", route,

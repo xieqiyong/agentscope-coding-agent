@@ -39,6 +39,18 @@ public class AgentEntity extends BaseEntity {
     @Column(name = "system_prompt", nullable = true)
     private String systemPrompt;
     /**
+     * 绑定的 Skills 配置 JSON。
+     */
+    @Lob
+    @Column(name = "skills_json", nullable = true, columnDefinition = "LONGTEXT")
+    private String skillsJson;
+    /**
+     * 绑定的 MCP 服务配置 JSON。
+     */
+    @Lob
+    @Column(name = "mcp_services_json", nullable = true, columnDefinition = "LONGTEXT")
+    private String mcpServicesJson;
+    /**
      * 模型配置 ID
      */
     @Column(name = "model_config_id", nullable = true)

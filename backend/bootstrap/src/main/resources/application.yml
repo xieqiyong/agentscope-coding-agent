@@ -3,10 +3,10 @@ spring:
     name: agent-platform
 
   datasource:
-    url: jdbc:mysql://192.168.50.105:3306/agent_platform?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    url: jdbc:mysql://127.0.0.1:3306/agent_platform?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: root
-    password: Xqy20250513
+    password: root123456
 
   jpa:
     open-in-view: false
@@ -35,7 +35,7 @@ agent:
       enabled: true
       type: redis
       redis:
-        uri: redis://666666@192.168.50.105:6379/0
+        uri: redis://666666@127.0.0.1:6379/0
       json:
         path: data/agentscope-sessions
 

@@ -38,7 +38,6 @@ public class CodingAgentCommandTools {
         return execute(command, description, timeoutSeconds, workingDirectory);
     }
 
-    @Tool(name = "Shell", description = "Bash 的别名。用于在当前工作区执行受沙箱限制的非交互命令。", readOnly = false)
     public String Shell(
             @ToolParam(name = "command", description = "要执行的单行命令。") String command,
             @ToolParam(name = "description", required = false, description = "执行这个命令的简短目的说明。") String description,
@@ -47,7 +46,6 @@ public class CodingAgentCommandTools {
         return execute(command, description, timeoutSeconds, workingDirectory);
     }
 
-    @Tool(name = "run_command", description = "Bash 的兼容别名。用于执行受沙箱限制的工作区命令。", readOnly = false)
     public String runCommand(
             @ToolParam(name = "command", description = "要执行的单行命令。") String command,
             @ToolParam(name = "description", required = false, description = "执行这个命令的简短目的说明。") String description,

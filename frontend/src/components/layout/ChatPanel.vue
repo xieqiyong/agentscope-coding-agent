@@ -17,7 +17,7 @@
       </div>
     </div>
 
-    <div v-else class="chat-messages" ref="messagesContainer">
+    <div v-else class="chat-messages" ref="messagesContainer" @scroll.passive="handleMessagesScroll">
       <MessageList
         @review-confirmation="$emit('reviewConfirmation', $event)"
         @approve-confirmation="handleToolApproval($event, true)"
@@ -37,6 +37,7 @@ import MessageList from '@/components/chat/MessageList.vue'
 import ChatInput from '@/components/chat/ChatInput.vue'
 import { useChatStore } from '@/stores/chat'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { useAgentStore } from '@/stores/agent'
 import { useSse } from '@/composables/useSse'
 import { modelConfigApi } from '@/api/modelConfig'
 import type { Confirmation, PlanInfo, PlanStep } from '@/types'
@@ -47,8 +48,11 @@ defineEmits<{
 
 const chatStore = useChatStore()
 const workspaceStore = useWorkspaceStore()
+const agentStore = useAgentStore()
 const sse = useSse()
 const messagesContainer = ref<HTMLElement | null>(null)
+const autoScrollEnabled = ref(true)
+const BOTTOM_THRESHOLD = 96
 
 const isLanding = computed(() => (
   !workspaceStore.hasWorkspace
@@ -59,16 +63,33 @@ const greetingTitle = computed(() => {
   if (!workspaceStore.hasWorkspace) return 'Choose a workspace'
   const hour = new Date().getHours()
   const period = hour < 12 ? 'Morning' : hour < 18 ? 'Afternoon' : 'Evening'
-  return `${period}, mini`
+  return `${period}, admin`
 })
 
-// 滚动到底部
-function scrollToBottom() {
+// 用户在底部附近时才跟随流式输出；上滑查看历史时不抢滚动位置。
+function scrollToBottom(force = false) {
   nextTick(() => {
-    if (messagesContainer.value) {
-      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+    const container = messagesContainer.value
+    if (!container) {
+      return
+    }
+    if (force || autoScrollEnabled.value || isNearBottom(container)) {
+      container.scrollTop = container.scrollHeight
+      autoScrollEnabled.value = true
     }
   })
+}
+
+function handleMessagesScroll() {
+  const container = messagesContainer.value
+  if (!container) {
+    return
+  }
+  autoScrollEnabled.value = isNearBottom(container)
+}
+
+function isNearBottom(container: HTMLElement) {
+  return container.scrollHeight - container.scrollTop - container.clientHeight <= BOTTOM_THRESHOLD
 }
 
 // 新消息、流式文本、思考和工具轨迹变化时自动滚动到底部。
@@ -97,20 +118,21 @@ async function handleToolApproval(confirmation: Confirmation, approved: boolean)
 }
 
 async function handleExecutePlan(plan: PlanInfo) {
-  if (!workspaceStore.currentWorkspace || chatStore.isStreaming) return
+  if (!workspaceStore.currentWorkspace || !agentStore.currentAgent || chatStore.isStreaming) return
 
   const message = buildPlanExecutionMessage(plan)
   chatStore.addUserMessage(message, { messageKind: 'plan-execute' })
 
   const modelConfig = await loadModelConfig()
   const ws = workspaceStore.currentWorkspace
+  const agent = agentStore.currentAgent
   await sse.start({
     workspaceId: Number(ws.id),
     conversationId: chatStore.lastConversationId ?? undefined,
     message,
     plan,
     runMode: 'PLAN_EXECUTE',
-    agentId: 1,
+    agentId: Number(agent.id),
     userId: '1',
     timeoutSeconds: 86400,
     modelBaseUrl: modelConfig.modelBaseUrl,

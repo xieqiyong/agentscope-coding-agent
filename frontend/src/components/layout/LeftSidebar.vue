@@ -17,6 +17,9 @@
       <button class="sidebar-icon-item" @click="uiStore.toggleLeftSidebar()" title="记忆">
         <i class="pi pi-bookmark"></i>
       </button>
+      <router-link class="sidebar-icon-item" to="/agents" title="智能体">
+        <i class="pi pi-sitemap"></i>
+      </router-link>
     </div>
 
     <!-- 展开时显示完整内容 -->
@@ -51,6 +54,10 @@
             <span class="nav-icon"><i class="pi pi-file-edit"></i></span>
             <span>Artifacts</span>
           </button>
+          <router-link class="nav-item nav-link" to="/agents">
+            <span class="nav-icon"><i class="pi pi-sitemap"></i></span>
+            <span>Agents</span>
+          </router-link>
           <button class="nav-item" type="button" @click="memoryOpen = !memoryOpen">
             <span class="nav-icon"><i class="pi pi-briefcase"></i></span>
             <span>Customize</span>
@@ -148,6 +155,7 @@ function startNewChat() {
   color: var(--text-muted);
   transition: all 0.15s;
   font-size: var(--font-size-sm);
+  text-decoration: none;
 }
 
 .sidebar-icon-item:hover {
@@ -226,6 +234,11 @@ function startNewChat() {
   font-size: 1rem;
   text-align: left;
   cursor: pointer;
+  text-decoration: none;
+}
+
+.nav-link {
+  width: 100%;
 }
 
 .nav-item:hover:not(:disabled) {

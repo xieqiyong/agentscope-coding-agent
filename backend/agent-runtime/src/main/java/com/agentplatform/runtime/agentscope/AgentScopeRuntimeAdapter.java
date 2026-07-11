@@ -160,8 +160,8 @@ public class AgentScopeRuntimeAdapter {
 
     private ReActAgent buildDirectAnswerAgent(RuntimeContext context) {
         return ReActAgent.builder()
-                .name("direct-answer-agent")
-                .description("无需工作区工具的直接回答智能体")
+                .name(directAnswerAgentName(context))
+                .description("当前智能体的轻量直接回答模式")
                 .sysPrompt(buildDirectAnswerPrompt(context))
                 .model(buildModel(context))
                 .toolkit(new Toolkit())
@@ -319,12 +319,15 @@ public class AgentScopeRuntimeAdapter {
 
     private String buildDirectAnswerPrompt(RuntimeContext context) {
         StringBuilder builder = new StringBuilder();
+        builder.append(buildDirectAnswerIdentityPrompt(context)).append("\n\n");
         builder.append("""
-                你是 DirectAnswerAgent，负责回答不需要读取工作区、不需要执行工具的普通问题。
-                要求：
-                1. 默认使用中文回答，表达直接、清晰、简洁。
-                2. 不要声称已经读取文件、执行命令或检查工作区。
-                3. 如果用户问题必须依赖项目文件或运行结果，请说明需要切换到工作区分析流程。
+                【轻量直接回答模式】
+                1. 你仍然代表当前用户选择的智能体，不要自称 DirectAnswerAgent、RouterAgent、内部节点或运行模式。
+                2. 本轮没有注册工作区工具，请直接回答不依赖工作区读取的问题。
+                3. 默认使用中文回答，表达直接、清晰、简洁。
+                4. 不要声称已经读取文件、执行命令或检查工作区。
+                5. 如果用户问题必须依赖项目文件或运行结果，请说明需要切换到工作区分析流程。
+                6. 用户问“你是谁”“介绍一下你自己”时，只介绍当前智能体身份，不要把工作区名称、项目名称或记忆里的项目名当成你的名字或专长。
                 """);
         if (context.getActiveMemories() != null && !context.getActiveMemories().isEmpty()) {
             builder.append("\n可参考的长期记忆：\n");
@@ -338,6 +341,37 @@ public class AgentScopeRuntimeAdapter {
                             .append("\n"));
         }
         return builder.toString();
+    }
+
+    private String buildDirectAnswerIdentityPrompt(RuntimeContext context) {
+        String agentName = context.getAgent() != null ? context.getAgent().getName() : "";
+        String configuredPrompt = context.getAgent() != null ? context.getAgent().getSystemPrompt() : "";
+        StringBuilder builder = new StringBuilder();
+        builder.append("【当前智能体身份】\n");
+        builder.append("- 名称：").append(StringUtils.hasText(agentName) ? agentName : "当前智能体").append("\n");
+        if (StringUtils.hasText(configuredPrompt)) {
+            builder.append("- 用户配置提示词：").append(configuredPrompt).append("\n");
+        } else {
+            builder.append("- 默认身份：一个专注、可靠的智能体。\n");
+        }
+        builder.append("""
+                【身份边界】
+                1. 智能体身份只来自上面的名称和用户配置提示词。
+                2. 当前工作区、项目名、目录名、长期记忆里的项目事实，只能作为任务上下文，不能变成你的名字、品牌、专业领域或自我介绍的一部分。
+                3. 除非用户明确要求介绍当前工作区或项目，否则不要在自我介绍里提工作区名称。
+                """);
+        return builder.toString();
+    }
+
+    private String directAnswerAgentName(RuntimeContext context) {
+        String name = context.getAgent() != null ? context.getAgent().getName() : null;
+        if (!StringUtils.hasText(name)) {
+            return "selected-agent";
+        }
+        String normalized = name.trim().toLowerCase()
+                .replaceAll("[^\\p{IsHan}a-z0-9_-]+", "-")
+                .replaceAll("^-+|-+$", "");
+        return StringUtils.hasText(normalized) ? normalized : "selected-agent";
     }
 
     private List<Msg> currentUserMessageOnly(RuntimeContext context) {

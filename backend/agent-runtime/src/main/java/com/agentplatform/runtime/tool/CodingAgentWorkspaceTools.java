@@ -56,7 +56,6 @@ public class CodingAgentWorkspaceTools {
         this.patchApplyService = patchApplyService;
     }
 
-    @Tool(name = "list_files", description = "列出工作区相对目录下的文件。读取未知路径前优先调用这个工具。", readOnly = true)
     public String listFiles(
             @ToolParam(name = "path", required = false, description = "工作区相对目录路径。") String path,
             @ToolParam(name = "maxDepth", required = false, description = "最大遍历深度，最高限制为 5。") Integer maxDepth) {
@@ -94,7 +93,6 @@ public class CodingAgentWorkspaceTools {
         }
     }
 
-    @Tool(name = "read_file", description = "读取工作区内的文本文件。敏感文件和二进制文件会被拒绝。", readOnly = true)
     public String readFile(
             @ToolParam(name = "path", description = "工作区相对文件路径。") String path,
             @ToolParam(name = "maxChars", required = false, description = "最多返回字符数，最高限制为 20000。") Integer maxChars) {
@@ -127,7 +125,6 @@ public class CodingAgentWorkspaceTools {
         }
     }
 
-    @Tool(name = "search_code", description = "在工作区文件中搜索文本，不执行 shell 命令。", readOnly = true)
     public String searchCode(
             @ToolParam(name = "query", description = "要搜索的文本。") String query,
             @ToolParam(name = "path", required = false, description = "工作区相对搜索目录。") String path,
@@ -180,7 +177,6 @@ public class CodingAgentWorkspaceTools {
         }
     }
 
-    @Tool(name = "write_file", description = "在当前工作区内直接创建或整文件替换文本文件。只允许写入当前 workspace 内的非敏感文本文件。", readOnly = false)
     public String writeFile(
             @ToolParam(name = "path", description = "工作区相对文件路径。") String path,
             @ToolParam(name = "content", description = "要写入的完整文件内容。") String content,
@@ -321,7 +317,7 @@ public class CodingAgentWorkspaceTools {
         }
     }
 
-    @Tool(name = "LS", description = "List files under the current workspace. Claude Code style alias for list_files.", readOnly = true)
+    @Tool(name = "LS", description = "List files under the current workspace.", readOnly = true)
     public String LS(
             @ToolParam(name = "path", required = false, description = "Workspace relative path or absolute path inside workspace.") String path,
             @ToolParam(name = "maxDepth", required = false, description = "Maximum traversal depth, capped at 5.") Integer maxDepth) {

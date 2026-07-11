@@ -19,6 +19,15 @@
             <i class="pi pi-plus"></i>
           </button>
           <div class="action-spacer"></div>
+          <button
+            :class="['mode-control', { active: multiAgentEnabled }]"
+            type="button"
+            title="多 Agent 自动编排"
+            @click="multiAgentEnabled = !multiAgentEnabled"
+          >
+            <i class="pi pi-sitemap"></i>
+            <span>多 Agent</span>
+          </button>
           <button class="model-control" type="button" title="模型">
             <span>{{ displayModelName }}</span>
             <i class="pi pi-chevron-down"></i>
@@ -69,11 +78,13 @@
 import { ref, computed, nextTick, onMounted } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { useAgentStore } from '@/stores/agent'
 import { useSse } from '@/composables/useSse'
 import { modelConfigApi } from '@/api/modelConfig'
 
 const chatStore = useChatStore()
 const workspaceStore = useWorkspaceStore()
+const agentStore = useAgentStore()
 const sse = useSse()
 
 withDefaults(defineProps<{
@@ -86,17 +97,19 @@ const inputText = ref('')
 const textareaEl = ref<HTMLTextAreaElement | null>(null)
 const isFocused = ref(false)
 const currentModelName = ref('')
+const multiAgentEnabled = ref(true)
 
 const canSend = computed(
-  () => inputText.value.trim().length > 0 && workspaceStore.currentWorkspace && !chatStore.isStreaming,
+  () => inputText.value.trim().length > 0 && workspaceStore.currentWorkspace && agentStore.currentAgent && !chatStore.isStreaming,
 )
 
 const disabled = computed(
-  () => !workspaceStore.currentWorkspace || chatStore.isStreaming,
+  () => !workspaceStore.currentWorkspace || !agentStore.currentAgent || chatStore.isStreaming,
 )
 
 const placeholder = computed(() => {
   if (!workspaceStore.currentWorkspace) return '请先选择一个工作区...'
+  if (!agentStore.currentAgent) return '请先选择或创建一个 Agent...'
   if (chatStore.isStreaming) return 'Agent 正在思考...'
   return 'How can I help you today?'
 })
@@ -152,12 +165,13 @@ async function send() {
   }
 
   const ws = workspaceStore.currentWorkspace!
+  const agent = agentStore.currentAgent!
   sse.start({
     workspaceId: Number(ws.id),
     conversationId: chatStore.lastConversationId ?? undefined,
     message: command.message,
-    runMode: command.runMode,
-    agentId: 1,
+    runMode: command.runMode || (multiAgentEnabled.value ? 'AUTO' : 'SINGLE_AGENT'),
+    agentId: Number(agent.id),
     userId: '1',
     timeoutSeconds: 86400,
     modelBaseUrl,
@@ -219,12 +233,12 @@ function autoResize() {
   border-radius: 24px;
   padding: 20px 22px 16px;
   transition: border-color 0.2s, box-shadow 0.2s;
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 6px 16px rgba(47, 42, 36, 0.075);
 }
 
 .input-wrapper.focused {
   border-color: #cfc5b7;
-  box-shadow: 0 18px 54px rgba(47, 42, 36, 0.15);
+  box-shadow: 0 8px 22px rgba(47, 42, 36, 0.11);
 }
 
 .chat-textarea {
@@ -263,7 +277,8 @@ function autoResize() {
 }
 
 .utility-btn,
-.model-control {
+.model-control,
+.mode-control {
   height: 34px;
   border: none;
   border-radius: 10px;
@@ -285,11 +300,17 @@ function autoResize() {
   font-size: 1rem;
 }
 
-.model-control {
+.model-control,
+.mode-control {
   gap: 8px;
   padding: 0 8px;
   color: var(--text-primary);
   font-size: var(--font-size-sm);
+}
+
+.mode-control.active {
+  background: var(--ink);
+  color: var(--bg-main);
 }
 
 .model-control span {
@@ -300,8 +321,13 @@ function autoResize() {
 }
 
 .utility-btn:hover,
-.model-control:hover {
+.model-control:hover,
+.mode-control:hover {
   background: var(--bg-hover);
+}
+
+.mode-control.active:hover {
+  background: #000;
 }
 
 .action-btn {
@@ -375,7 +401,7 @@ function autoResize() {
 .chat-input-area.dock .input-wrapper {
   border-radius: 18px;
   padding: 12px 14px 10px;
-  box-shadow: 0 8px 26px rgba(47, 42, 36, 0.07);
+  box-shadow: 0 4px 12px rgba(47, 42, 36, 0.055);
 }
 
 .chat-input-area.dock .chat-textarea {

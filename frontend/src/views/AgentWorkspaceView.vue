@@ -30,10 +30,12 @@ import RightPanel from '@/components/layout/RightPanel.vue'
 import DiffReviewModal from '@/components/diff/DiffReviewModal.vue'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useChatStore } from '@/stores/chat'
+import { useAgentStore } from '@/stores/agent'
 import type { Confirmation } from '@/types'
 
 const workspaceStore = useWorkspaceStore()
 const chatStore = useChatStore()
+const agentStore = useAgentStore()
 
 const showDiffModal = ref(false)
 const selectedConfirmation = ref<Confirmation | null>(null)
@@ -60,6 +62,7 @@ watch(
   () => workspaceStore.currentWorkspace?.id,
   async (newId, oldId) => {
     if (!newId || String(newId) === String(oldId || '')) return
+    await agentStore.fetchAgents(newId)
     await chatStore.fetchSessions(newId)
     await restoreConversation()
   },

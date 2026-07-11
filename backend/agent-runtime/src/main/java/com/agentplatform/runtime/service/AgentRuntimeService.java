@@ -11,6 +11,8 @@ import com.agentplatform.persistence.enums.AgentRunStatus;
 import com.agentplatform.persistence.repository.AgentRunRepository;
 import com.agentplatform.persistence.repository.ConversationMessageRepository;
 import com.agentplatform.persistence.repository.ConversationRepository;
+import com.agentplatform.persistence.repository.PatchFileRepository;
+import com.agentplatform.persistence.repository.PatchRepository;
 import com.agentplatform.runtime.model.AgentApprovalCommand;
 import com.agentplatform.runtime.agentscope.AgentScopeRuntimeAdapter;
 import com.agentplatform.runtime.model.AgentRunCommand;
@@ -20,8 +22,11 @@ import com.agentplatform.runtime.model.RuntimeEvent;
 import com.agentplatform.runtime.model.RuntimeEventSink;
 import com.agentplatform.runtime.model.RuntimeEventType;
 import com.agentplatform.runtime.multiagent.MultiAgentOrchestrator;
+import com.agentplatform.runtime.tool.CodingAgentWorkspaceTools;
 import com.agentplatform.sandbox.CommandExecutionResult;
 import com.agentplatform.sandbox.CommandSandboxService;
+import com.agentplatform.sandbox.PatchApplyService;
+import com.agentplatform.sandbox.SandboxPathResolver;
 import jakarta.annotation.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -70,6 +75,18 @@ public class AgentRuntimeService {
 
     @Resource
     private CommandSandboxService commandSandboxService;
+
+    @Resource
+    private SandboxPathResolver sandboxPathResolver;
+
+    @Resource
+    private PatchRepository patchRepository;
+
+    @Resource
+    private PatchFileRepository patchFileRepository;
+
+    @Resource
+    private PatchApplyService patchApplyService;
 
     @Resource
     private MultiAgentOrchestrator multiAgentOrchestrator;
@@ -241,6 +258,10 @@ public class AgentRuntimeService {
             context.setRuntimeEventSink(persistedSink);
             context.setRunStartedNanos(started);
 
+            if (Boolean.TRUE.equals(command.getApproved()) && isWorkspaceMutationTool(payload.toolCall().getName())) {
+                return resumeApprovedWorkspaceMutationTool(run, resumeCommand, context, payload, persistedSink, started);
+            }
+
             AgentRunResult result = agentScopeRuntimeAdapter.resumeAfterApproval(
                     context,
                     payload,
@@ -284,6 +305,99 @@ public class AgentRuntimeService {
                     e.getMessage(), Map.of("status", errorStatus.name()), elapsedMs(started));
             throw e;
         }
+    }
+
+    private AgentRunResult resumeApprovedWorkspaceMutationTool(AgentRunEntity run,
+                                                               AgentRunCommand resumeCommand,
+                                                               RuntimeContext context,
+                                                               ToolApprovalService.ToolApprovalPayload payload,
+                                                               RuntimeEventSink sink,
+                                                               long started) {
+        String toolName = safe(payload.toolCall().getName());
+        String toolCallId = safe(payload.toolCall().getId());
+        Map<String, Object> input = payload.toolCall().getInput() != null ? payload.toolCall().getInput() : Map.of();
+
+        emit(sink, run.getId(), run.getTraceId(), RuntimeEventType.CONFIRMATION_RESULT, "用户确认结果",
+                "用户已批准工作区写入工具，平台将直接执行该工具", Map.of(
+                        "toolCallId", toolCallId,
+                        "toolName", toolName,
+                        "approved", true
+                ), elapsedMs(started));
+        emit(sink, run.getId(), run.getTraceId(), RuntimeEventType.TOOL_CALL_STARTED, "开始准备工具调用",
+                null, toolCallMetadata(toolCallId, toolName, input), elapsedMs(started));
+        emit(sink, run.getId(), run.getTraceId(), RuntimeEventType.TOOL_RESULT_STARTED, "开始返回工具结果",
+                null, toolMetadata(toolCallId, toolName), elapsedMs(started));
+
+        PlatformToolExecutionOutcome outcome = executeApprovedWorkspaceMutation(context, toolName, input);
+
+        emit(sink, run.getId(), run.getTraceId(), RuntimeEventType.TOOL_RESULT_DELTA, "工具结果文本增量",
+                outcome.toolResult(), toolMetadata(toolCallId, toolName), elapsedMs(started));
+        emit(sink, run.getId(), run.getTraceId(), RuntimeEventType.TOOL_RESULT_FINISHED, "工具结果返回完成",
+                null, Map.of("toolCallId", toolCallId, "callId", toolCallId, "state", outcome.toolState()),
+                elapsedMs(started));
+
+        emitAssistantAnswer(sink, run, outcome.finalAnswer(), started);
+        saveAssistantMessage(run.getConversationId(), outcome.finalAnswer());
+        MemoryCaptureResult memoryCaptureResult = captureMemory(
+                resumeCommand,
+                run.getConversationId(),
+                run.getUserMessageId(),
+                outcome.finalAnswer()
+        );
+        AgentRunResult result = basePlatformResult(run, outcome.finalAnswer());
+        lifecycleService.completeRun(run.getId(), result);
+        emit(sink, run.getId(), run.getTraceId(), RuntimeEventType.RUN_FINISHED, "运行完成",
+                "工作区写入工具已执行完成", Map.of(
+                        "status", AgentRunStatus.COMPLETED.name(),
+                        "conversationId", run.getConversationId(),
+                        "memoryCaptured", memoryCaptureResult.captured(),
+                        "memoryActivated", memoryCaptureResult.activated(),
+                        "memoryPending", memoryCaptureResult.pending(),
+                        "memoryConflicts", memoryCaptureResult.conflicts()
+                ), elapsedMs(started));
+        return result;
+    }
+
+    private PlatformToolExecutionOutcome executeApprovedWorkspaceMutation(RuntimeContext context,
+                                                                          String toolName,
+                                                                          Map<String, Object> input) {
+        CodingAgentWorkspaceTools tools = new CodingAgentWorkspaceTools(
+                context,
+                sandboxPathResolver,
+                patchRepository,
+                patchFileRepository,
+                patchApplyService
+        );
+        String toolResult;
+        if ("Write".equals(toolName)) {
+            toolResult = tools.Write(
+                    firstText(input, "file_path", "path"),
+                    stringValue(input.get("content"))
+            );
+        } else if ("write_file".equals(toolName)) {
+            toolResult = tools.writeFile(
+                    firstText(input, "path", "file_path"),
+                    stringValue(input.get("content")),
+                    stringValue(input.get("writeMode"))
+            );
+        } else if ("Edit".equals(toolName)) {
+            toolResult = tools.Edit(
+                    firstText(input, "file_path", "path"),
+                    stringValue(input.get("old_string")),
+                    stringValue(input.get("new_string")),
+                    booleanValue(input.get("replace_all"))
+            );
+        } else if ("apply_patch".equals(toolName)) {
+            toolResult = tools.applyPatch(firstText(input, "unifiedDiff", "unified_diff", "diff"));
+        } else {
+            toolResult = "不支持的工作区写入工具：" + toolName;
+        }
+
+        String state = workspaceMutationState(toolResult);
+        String answer = "SUCCESS".equals(state)
+                ? "已收到你的批准，工作区文件已完成修改。\n\n" + toolResult
+                : "已收到你的批准，但工作区工具执行未完成。\n\n" + toolResult;
+        return new PlatformToolExecutionOutcome(toolResult, answer, state);
     }
 
     private void validateCommand(AgentRunCommand command) {
@@ -624,8 +738,49 @@ public class AgentRuntimeService {
                 || "runCommand".equalsIgnoreCase(toolName);
     }
 
+    private boolean isWorkspaceMutationTool(String toolName) {
+        return "Write".equals(toolName)
+                || "write_file".equals(toolName)
+                || "Edit".equals(toolName)
+                || "apply_patch".equals(toolName);
+    }
+
+    private String workspaceMutationState(String toolResult) {
+        if (!StringUtils.hasText(toolResult)) {
+            return "ERROR";
+        }
+        if (toolResult.contains("已直接写入当前工作区")
+                || toolResult.contains("File written directly to current workspace")
+                || toolResult.contains("Patch 已直接应用到当前工作区")) {
+            return "SUCCESS";
+        }
+        return "ERROR";
+    }
+
     private String stringValue(Object value) {
         return value == null ? "" : String.valueOf(value);
+    }
+
+    private String firstText(Map<String, Object> input, String... keys) {
+        if (input == null || keys == null) {
+            return "";
+        }
+        for (String key : keys) {
+            if (input.containsKey(key) && input.get(key) != null) {
+                return String.valueOf(input.get(key));
+            }
+        }
+        return "";
+    }
+
+    private Boolean booleanValue(Object value) {
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        if (value instanceof String text && StringUtils.hasText(text)) {
+            return Boolean.parseBoolean(text);
+        }
+        return null;
     }
 
     private Integer integerValue(Object value) {

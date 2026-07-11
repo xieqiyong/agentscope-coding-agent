@@ -1,7 +1,7 @@
 <template>
   <div :class="['chat-message', message.role, { 'is-plan-execute': message.messageKind === 'plan-execute' }]">
     <!-- 角色标签 -->
-    <div class="message-role-label">
+    <div v-if="message.role === 'user'" class="message-role-label">
       <div :class="['role-badge', message.role]">
         <i :class="message.role === 'user' ? 'pi pi-user' : 'pi pi-bolt'" style="font-size: 0.7rem;"></i>
         <span>{{ message.role === 'user' ? '你' : 'Agent' }}</span>
@@ -11,10 +11,11 @@
     <!-- 消息内容 -->
     <div class="message-body">
       <!-- 思考过程：默认展示状态，不展开完整推理链 -->
-      <div v-if="message.role === 'assistant' && showThinkingTrace" class="thinking-trace">
+      <div v-if="message.role === 'assistant' && showThinkingTrace" :class="['thinking-trace', { running: thinkingRunning }]">
         <button class="thinking-toggle" type="button" @click="thinkingExpanded = !thinkingExpanded">
           <i :class="['pi', thinkingIcon]"></i>
           <span class="thinking-title">{{ thinkingTitle }}</span>
+          <span v-if="thinkingRunning" class="thinking-dots" aria-hidden="true"><span></span><span></span><span></span></span>
           <span v-if="thinkingMeta" class="thinking-meta">{{ thinkingMeta }}</span>
           <i :class="['pi', thinkingExpanded ? 'pi-chevron-down' : 'pi-chevron-right', 'thinking-chevron']"></i>
         </button>
@@ -173,9 +174,10 @@ const thinking = computed(() => props.message.thinking)
 const showThinkingTrace = computed(() => Boolean(thinking.value || toolCalls.value.length))
 const hasAssistantContent = computed(() => Boolean((props.message.content || '').trim()))
 const hasContent = computed(() => Boolean((props.message.content || '').trim()))
+const thinkingRunning = computed(() => thinking.value?.status === 'thinking' || toolTraceState.value === 'running')
 
 const thinkingIcon = computed(() => {
-  if (thinking.value?.status === 'thinking' || toolTraceState.value === 'running') {
+  if (thinkingRunning.value) {
     return 'pi-spin pi-spinner'
   }
   if (toolTraceState.value === 'error') {
@@ -725,6 +727,24 @@ function isCommandTool(toolName: string): boolean {
   border-radius: 14px;
   background: color-mix(in srgb, var(--bg-hover) 76%, transparent);
   overflow: hidden;
+  position: relative;
+}
+
+.thinking-trace.running {
+  border-color: rgba(217, 109, 74, 0.45);
+  background: linear-gradient(90deg, rgba(237, 232, 221, 0.84), rgba(255, 254, 250, 0.92), rgba(237, 232, 221, 0.84));
+  background-size: 220% 100%;
+  animation: thinking-sheen 2.2s ease-in-out infinite;
+}
+
+.thinking-trace.running::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(217, 109, 74, 0.12), transparent);
+  transform: translateX(-100%);
+  animation: thinking-scan 1.8s ease-in-out infinite;
 }
 
 .thinking-toggle {
@@ -763,11 +783,50 @@ function isCommandTool(toolName: string): boolean {
   color: var(--text-muted);
 }
 
+.thinking-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.thinking-dots span {
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--accent);
+  animation: thinking-dot 1.1s ease-in-out infinite;
+}
+
+.thinking-dots span:nth-child(2) {
+  animation-delay: 0.14s;
+}
+
+.thinking-dots span:nth-child(3) {
+  animation-delay: 0.28s;
+}
+
 .thinking-content {
   padding: 0 var(--spacing-md) var(--spacing-sm);
   color: var(--text-secondary);
   font-size: var(--font-size-xs);
   line-height: 1.6;
+}
+
+@keyframes thinking-sheen {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes thinking-scan {
+  0% { transform: translateX(-100%); opacity: 0; }
+  35% { opacity: 1; }
+  100% { transform: translateX(100%); opacity: 0; }
+}
+
+@keyframes thinking-dot {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.42; }
+  40% { transform: translateY(-3px); opacity: 1; }
 }
 
 .thinking-text {
