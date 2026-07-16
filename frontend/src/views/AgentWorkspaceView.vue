@@ -119,5 +119,13 @@ function onDiffResolved() {
   position: relative;
   display: flex;
   overflow: hidden;
+  gap: 0;
+  padding: 0 16px 16px 0;
+}
+
+@media (max-width: 1100px) {
+  .workspace-body {
+    padding-right: 0;
+  }
 }
 </style>

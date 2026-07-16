@@ -59,7 +59,7 @@ public class AgentDefinitionService {
         entity.setMcpServicesJson(mcpServicesJson);
         entity.setModelConfigId(modelConfigId);
         entity.setMaxIterations(firstPositive(maxIterations, 8));
-        entity.setTimeoutSeconds(firstPositive(timeoutSeconds, 120));
+        entity.setTimeoutSeconds(firstPositive(timeoutSeconds, 86400));
         entity.setStatus("ENABLED");
         return agentRepository.save(entity);
     }
@@ -121,7 +121,7 @@ public class AgentDefinitionService {
         entity.setSkillsJson("[]");
         entity.setMcpServicesJson("[]");
         entity.setMaxIterations(8);
-        entity.setTimeoutSeconds(120);
+        entity.setTimeoutSeconds(86400);
         entity.setStatus("ENABLED");
         return agentRepository.save(entity);
     }

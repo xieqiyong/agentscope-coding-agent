@@ -100,9 +100,6 @@ public class CodingAgentWorkspaceTools {
         if (!Files.isRegularFile(resolved.absolutePath())) {
             return "路径不是普通文件：" + resolved.relativePath();
         }
-        if (isSensitivePath(resolved.relativePath())) {
-            return "拒绝读取敏感文件：" + resolved.relativePath();
-        }
         try {
             long size = Files.size(resolved.absolutePath());
             if (size > MAX_READ_BYTES) {
@@ -141,7 +138,6 @@ public class CodingAgentWorkspaceTools {
             List<Path> files = stream
                     .filter(Files::isRegularFile)
                     .filter(p -> !isIgnoredPath(p))
-                    .filter(p -> !isSensitivePath(resolved.rootPath().relativize(p).toString().replace('\\', '/')))
                     .limit(1000)
                     .toList();
             for (Path file : files) {
@@ -187,10 +183,6 @@ public class CodingAgentWorkspaceTools {
         if (content == null) {
             content = "";
         }
-        if (isSensitivePath(path)) {
-            return "拒绝直接修改敏感文件：" + path + "。如确需修改，请使用 propose_file_change 创建审核提案。";
-        }
-
         ResolvedWorkspacePath resolved = sandboxPathResolver.resolvePath(rootPath(), path, false);
         String mode = StringUtils.hasText(writeMode) ? writeMode.trim().toUpperCase() : "UPSERT";
         boolean exists = Files.exists(resolved.absolutePath());
@@ -278,10 +270,6 @@ public class CodingAgentWorkspaceTools {
         if (content == null) {
             content = "";
         }
-        if (isSensitivePath(path)) {
-            return "拒绝修改敏感文件：" + path;
-        }
-
         ResolvedWorkspacePath resolved = sandboxPathResolver.resolvePath(rootPath(), path, false);
         String normalizedType = StringUtils.hasText(changeType) ? changeType.trim().toUpperCase() : "CREATE";
         boolean exists = Files.exists(resolved.absolutePath());
@@ -471,10 +459,6 @@ public class CodingAgentWorkspaceTools {
         if (oldString.equals(newString)) {
             return "new_string must be different from old_string";
         }
-        if (isSensitivePath(filePath)) {
-            return "Refused to directly edit sensitive file: " + filePath + ". Use propose_file_change if review is required.";
-        }
-
         ResolvedWorkspacePath resolved = sandboxPathResolver.resolveExistingPath(rootPath(), filePath);
         if (!Files.isRegularFile(resolved.absolutePath())) {
             return "Path is not a regular file: " + resolved.relativePath();
@@ -533,7 +517,7 @@ public class CodingAgentWorkspaceTools {
         return "修改提案已保存。\n"
                 + "补丁 ID：" + patch.getId() + "\n"
                 + "影响文件数：" + files.size() + "\n"
-                + "需要用户确认：是\n"
+                + "需要用户确认：否\n"
                 + "创建时间：" + createdAtText;
     }
 
@@ -628,9 +612,6 @@ public class CodingAgentWorkspaceTools {
         if (!Files.isRegularFile(resolved.absolutePath())) {
             return "Path is not a regular file: " + resolved.relativePath();
         }
-        if (isSensitivePath(resolved.relativePath())) {
-            return "Refused to read sensitive file: " + resolved.relativePath();
-        }
         try {
             byte[] bytes = Files.readAllBytes(resolved.absolutePath());
             if (looksBinary(bytes)) {
@@ -719,18 +700,6 @@ public class CodingAgentWorkspaceTools {
                 || normalized.contains("/build/");
     }
 
-    private boolean isSensitivePath(String relativePath) {
-        String lower = relativePath.toLowerCase();
-        return lower.endsWith(".env")
-                || lower.contains("/.env")
-                || lower.endsWith(".pem")
-                || lower.endsWith(".key")
-                || lower.contains("id_rsa")
-                || lower.contains("credentials")
-                || lower.contains("secret")
-                || lower.contains("token");
-    }
-
     private boolean looksBinary(byte[] bytes) {
         int max = Math.min(bytes.length, 4096);
         for (int i = 0; i < max; i++) {
@@ -748,4 +717,3 @@ public class CodingAgentWorkspaceTools {
         return text.substring(0, maxChars) + "...";
     }
 }
-

@@ -8,7 +8,7 @@ import java.util.List;
 
 /**
  * AgentScope 工具权限配置。
- * 中文注释：这里控制“工具调用前是否需要用户确认”，真正的路径安全仍然由 sandbox 模块兜底。
+ * 中文注释：保留配置类兼容旧配置项；当前运行时不再使用工具审批规则。
  */
 @Component
 @ConfigurationProperties(prefix = "agent.runtime.permission")
@@ -17,12 +17,12 @@ public class AgentScopePermissionProperties {
     /**
      * 是否启用 AgentScope PermissionEngine。
      */
-    private boolean enabled = true;
+    private boolean enabled = false;
 
     /**
      * 是否让高风险工具进入用户确认流程。
      */
-    private boolean directWriteApprovalEnabled = true;
+    private boolean directWriteApprovalEnabled = false;
 
     /**
      * 需要确认的高风险工具名。

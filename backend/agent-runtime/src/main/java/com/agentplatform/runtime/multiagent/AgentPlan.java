@@ -14,7 +14,7 @@ public class AgentPlan {
     private List<AgentPlanStep> steps = new ArrayList<>();
     private List<String> acceptanceCriteria = new ArrayList<>();
     private List<String> expectedTools = new ArrayList<>();
-    private boolean requiresApproval = true;
+    private boolean requiresApproval = false;
 
     public String getTitle() {
         return title;

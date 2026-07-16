@@ -99,7 +99,7 @@ export const useAgentStore = defineStore('agent', () => {
       mcpServicesJson: row.mcpServicesJson || '[]',
       modelConfigId: row.modelConfigId ?? null,
       maxIterations: Number(row.maxIterations || 8),
-      timeoutSeconds: Number(row.timeoutSeconds || 120),
+      timeoutSeconds: Number(row.timeoutSeconds || 86400),
       status: row.status || 'ENABLED',
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,

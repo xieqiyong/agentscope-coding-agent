@@ -13,7 +13,7 @@ import java.util.UUID;
 
 /**
  * 平台级工具治理入口。
- * 中文注释：这里不依赖 AgentScope PermissionEngine，而是在工具真正执行前由平台自己决定 ALLOW / ASK / DENY。
+ * 中文注释：当前只做 workspace 级校验，工具审批已经关闭，这里统一放行。
  */
 @Service
 public class RuntimeToolGuard {
@@ -24,40 +24,7 @@ public class RuntimeToolGuard {
                                                  String toolName,
                                                  Map<String, Object> input,
                                                  String summary) {
-        if (!requiresApproval(toolName)) {
-            return ToolGuardDecision.allow();
-        }
-
-        String toolCallId = "platform-tool-" + UUID.randomUUID();
-        Map<String, Object> toolCall = new LinkedHashMap<>();
-        toolCall.put("id", toolCallId);
-        toolCall.put("name", toolName);
-        toolCall.put("input", input != null ? input : Map.of());
-        toolCall.put("content", StringUtils.hasText(summary) ? summary : "平台工具执行确认");
-        toolCall.put("metadata", Map.of("approvalMode", APPROVAL_MODE_PLATFORM_TOOL_GUARD));
-        toolCall.put("state", "ASKING");
-        toolCall.put("riskLevel", classifyRisk(toolName));
-
-        Map<String, Object> metadata = new LinkedHashMap<>();
-        metadata.put("sourceEvent", "RuntimeToolGuard");
-        metadata.put("requestType", "TOOL_PERMISSION");
-        metadata.put("approvalMode", APPROVAL_MODE_PLATFORM_TOOL_GUARD);
-        metadata.put("replyId", "platform-tool-guard-" + toolCallId);
-        metadata.put("toolCalls", List.of(toolCall));
-        metadata.put("riskLevel", classifyRisk(toolName));
-        metadata.put("reason", "平台 ToolGuard 要求用户确认后再执行高风险工具");
-
-        context.setPlatformApprovalRequired(true);
-        context.getRuntimeEventSink().emit(RuntimeEvent.of(
-                context.getRunId(),
-                context.getTraceId(),
-                RuntimeEventType.CONFIRMATION_REQUIRED,
-                "需要用户确认",
-                "平台请求确认执行工具：" + toolName,
-                metadata,
-                elapsedMs(context)
-        ));
-        return ToolGuardDecision.ask(toolCallId, "平台已暂停工具执行，等待用户确认：" + toolName);
+        return ToolGuardDecision.allow();
     }
 
     public String classifyRisk(String toolName) {
@@ -69,10 +36,6 @@ public class RuntimeToolGuard {
             return "HIGH";
         }
         return "MEDIUM";
-    }
-
-    private boolean requiresApproval(String toolName) {
-        return isCommandTool(toolName);
     }
 
     private boolean isCommandTool(String toolName) {

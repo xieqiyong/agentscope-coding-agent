@@ -12,7 +12,11 @@ public class AgentPlanStep {
     private String title;
     private String description;
     private String status = "pending";
+    private Long agentId;
     private String agentName = "ExecutorAgent";
+    private String agentRole = "EXECUTOR";
+    private Long modelConfigId;
+    private String modelName;
     private List<String> tools = new ArrayList<>();
 
     public String getId() {
@@ -51,8 +55,40 @@ public class AgentPlanStep {
         return agentName;
     }
 
+    public Long getAgentId() {
+        return agentId;
+    }
+
+    public void setAgentId(Long agentId) {
+        this.agentId = agentId;
+    }
+
     public void setAgentName(String agentName) {
         this.agentName = agentName;
+    }
+
+    public String getAgentRole() {
+        return agentRole;
+    }
+
+    public void setAgentRole(String agentRole) {
+        this.agentRole = agentRole;
+    }
+
+    public Long getModelConfigId() {
+        return modelConfigId;
+    }
+
+    public void setModelConfigId(Long modelConfigId) {
+        this.modelConfigId = modelConfigId;
+    }
+
+    public String getModelName() {
+        return modelName;
+    }
+
+    public void setModelName(String modelName) {
+        this.modelName = modelName;
     }
 
     public List<String> getTools() {

@@ -26,7 +26,7 @@
     <div v-else class="sidebar-content">
       <div class="sidebar-top">
         <div class="brand-row">
-          <div class="brand-name">AgentScope</div>
+          <div class="brand-name">Coding Agent</div>
           <div class="brand-actions">
             <button class="brand-icon-btn" title="搜索">
               <i class="pi pi-search"></i>

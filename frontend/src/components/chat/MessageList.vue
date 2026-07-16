@@ -42,10 +42,10 @@ const lastMessageIsStreaming = computed(() => {
 .message-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  max-width: 840px;
+  gap: 2px;
+  max-width: 900px;
   margin: 0 auto;
-  padding: 0 28px 24px;
+  padding: 0 28px 18px;
 }
 
 .typing-indicator {

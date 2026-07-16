@@ -3,6 +3,17 @@
 [![项目演示视频](./docs/demo.png)](https://ai.sugeapi.cn/files/video/demo-small.mp4)
 
 > 点击上方图片查看完整演示视频。
+
+## 🧭 界面与编排
+
+### 多 Agent 编排
+
+![多 Agent 编排](./docs/images/agent编排.png)
+
+### 运行状态恢复
+
+![运行状态恢复](./docs/images/状态恢复.png)
+
 # Java AgentScope Coding Agent
 
 一个基于 **Java + Spring Boot + AgentScope Java** 的网页版 Coding Agent 实验项目。
@@ -16,7 +27,8 @@
 - 运行状态机
 - AgentScope checkpoint
 - 长期记忆
-- Diff / Patch 审核
+- 多 Agent 协作与图式编排
+- Workspace 内直接文件修改与 Patch 应用
 - 前端可观测运行轨迹
 
 当前项目适合用于学习和二次开发，仍处于 MVP / 实验阶段，不建议直接作为生产系统使用。
@@ -39,7 +51,7 @@ Vue3 前端
 
 ```text
 AgentScope 负责 Agent Loop。
-平台负责 workspace、sandbox、memory、approval、persistence 和 frontend state。
+平台负责 workspace、sandbox、memory、orchestration、persistence 和 frontend state。
 ```
 
 ## 当前能力
@@ -52,13 +64,24 @@ AgentScope 负责 Agent Loop。
 - AgentScope `streamEvents` 转平台 `RuntimeEvent`
 - 模型调用、思考阶段、回答增量、工具调用、工具结果展示
 - Redis SessionKey / AgentState checkpoint
+- 可中断运行：前端停止生成会通知后端取消当前 run
+- DSML 工具调用文本过滤，避免模型把内部 tool call 协议直接渲染到聊天正文
 - 运行状态机：
   - `RUNNING`
-  - `WAITING_APPROVAL`
   - `COMPLETED`
   - `FAILED`
   - `TIMEOUT`
   - `CANCELLED`
+
+### Multi-Agent Orchestration
+
+- 支持自定义 Agent：名称、描述、系统提示词、Skills、MCP 服务、模型配置、最大迭代次数和超时时间
+- 支持聊天页选择 Agent，并提供多 Agent 协作入口
+- 新增轻量图编排器 `AgentGraph`，支持 `addNode`、`addEdge`、`addConditionalEdge`
+- Router / Planner / Executor 通过图式编排串联
+- Planner 可读取当前工作区可用 Agent，并为计划步骤分配 `agentId`、`agentRole`、`modelConfigId`、`modelName`
+- Executor 执行计划步骤时可临时切换到对应专家 Agent 的 prompt 和模型配置
+- 计划卡片支持步骤状态恢复、逐步执行、取消运行和专家/模型展示
 
 ### Workspace Tools
 
@@ -83,17 +106,18 @@ WebSearch
 
 其中 `LS / Read / Glob / Grep / Write / Edit` 是为了贴近 Claude Code / Codex 风格的工具命名。
 
-### Sandbox
+### Workspace 与工具治理
 
-当前已实现基础文件级沙箱：
+当前工具权限策略偏向开发效率：不再做工具审批，只做 workspace 边界校验。
 
 - workspace root 边界限制
 - 路径归一化
 - 路径逃逸拦截
-- 敏感文件读取/写入拦截
 - 二进制文件读取/写入拦截
 - 大文件读取限制
 - patch 应用路径校验
+- Bash 工作目录必须位于当前 workspace 内
+- Bash 命令输出截断和超时控制
 
 ### Memory
 
@@ -124,6 +148,8 @@ WebSearch
 - Chat 面板
 - 工具调用折叠展示
 - 思考状态展示
+- 计划卡片与多 Agent 执行状态展示
+- Agent 创建与配置页面
 - Runtime event 面板
 - Timing 面板
 - Diff review 组件
@@ -140,7 +166,7 @@ WebSearch
 - Spring Data JPA
 - MySQL
 - Redis
-- AgentScope Java `2.0.0-RC1`
+- AgentScope Java `2.0.0-RC3`
 - Lombok
 
 ### Frontend
@@ -171,6 +197,7 @@ java-agentscope-coding-agent
 │   └── common             # 通用实体、异常、响应
 ├── frontend               # Vue3 + TypeScript 前端
 ├── docs                   # 学习和设计文档
+│   └── images             # README 和文档截图
 ├── AGENTS.md              # 给 Coding Agent 的项目约束
 └── README.md
 ```
@@ -356,6 +383,10 @@ docs/09-Agent运行体验优化记录.md
 docs/10-Agent请求完整生命周期.md
 docs/11-运行状态机实现记录.md
 docs/12-长期记忆产品化实现记录.md
+docs/13-工具权限治理实现记录.md
+docs/14-命令级沙箱实现记录.md
+docs/15-平台级ToolGuard与Interrupt设计记录.md
+docs/16-多Agent第一轮实现记录.md
 ```
 
 如果你希望让 AI Coding Agent 继续接手本项目，请先阅读：
@@ -370,25 +401,29 @@ AGENTS.md
 
 - 基础 AgentScope Runtime
 - 文件工具
-- 基础 workspace 沙箱
+- workspace 边界校验
 - SSE 事件流
 - 前端工具调用轨迹
 - Redis checkpoint
 - Agent Run 状态机
 - 长期记忆注入和规则捕获
 - patch proposal / apply 基础能力
+- Bash workspace 命令工具
+- 多 Agent 图式编排
+- 自定义 Agent 创建和聊天页选择
+- 计划卡片状态恢复、逐步执行和取消运行
+- DSML 工具调用文本过滤
 
 尚未完成：
 
-- 完整 approval resume 流程
-- 命令执行沙箱
-- Bash 工具
-- 多实例 sessionKey 锁
+- A2A 协议和 Nacos Agent 注册发现
+- 多实例 sessionKey 锁和分布式运行协调
+- 并行专家协作、进度合并和 Review Agent
 - tool_calls 物化写入
 - 前端记忆审核管理
 - Session Memory 摘要压缩
 - Skill Memory
-- 完整权限治理策略
+- 生产级容器沙箱和权限模型
 - 生产级密钥管理
 
 ## 安全提醒
@@ -397,8 +432,9 @@ AGENTS.md
 
 - 不要把真实 API Key、数据库密码、Redis 地址提交到公开仓库。
 - 不要把生产 workspace 直接暴露给 Agent。
-- 不要在未完成命令沙箱前开放任意 shell 命令。
-- 不要让模型决定权限，模型只能提出动作，平台必须做权限判断。
+- 当前版本为了开发效率已关闭工具审批，仅保留 workspace 边界校验。
+- Bash 工具可以在 workspace 内执行命令，但这不是生产级隔离。
+- 后续接入 A2A / Nacos / 远程 Agent 时，必须补齐调用鉴权、租户隔离和审计。
 - 开源前请检查 `application.yml`、日志、数据库导出、截图中是否包含敏感信息。
 
 ## 开源前 Checklist
@@ -415,20 +451,20 @@ AGENTS.md
 近期计划：
 
 - 记忆审核接口和前端管理
-- approval / pending action 恢复
-- 命令级沙箱
+- A2A 协议和 Nacos Agent 注册发现
+- 多 Agent 协作进度看板
+- Review Agent 与计划执行结果合并
 - Bash 输出流式展示
 - Session Memory 滑动窗口 + 摘要
-- 更完整的工具审计
+- tool_calls 物化写入和更完整的运行审计
 - Evaluation / Observability
 
 更长期：
 
-- 多 Agent 编排
-- Plan / Observe / Execute / Review Agent
 - 远程沙箱或容器隔离
 - Git 工作流集成
-- 更完整的权限模型
+- 更完整的权限模型和生产级安全治理
+- Skills / MCP 市场化管理
 
 ## License
 

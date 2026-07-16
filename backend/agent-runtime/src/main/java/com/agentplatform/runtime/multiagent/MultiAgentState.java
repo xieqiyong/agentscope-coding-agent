@@ -2,6 +2,7 @@ package com.agentplatform.runtime.multiagent;
 
 import com.agentplatform.runtime.model.RuntimeContext;
 import com.agentplatform.runtime.model.RuntimeEventSink;
+import com.agentplatform.runtime.model.AgentRunResult;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -18,6 +19,12 @@ public class MultiAgentState {
     private String task;
     private AgentPlan plan;
     private String currentNode;
+    private String graphNode;
+    private AgentRouteDecision routeDecision;
+    private AgentNodeResult lastNodeResult;
+    private AgentRunResult terminalResult;
+    private List<AgentRunResult> stepResults = new ArrayList<>();
+    private int nextStepIndex;
     private List<String> observations = new ArrayList<>();
     private List<String> errors = new ArrayList<>();
 
@@ -67,6 +74,54 @@ public class MultiAgentState {
 
     public void setCurrentNode(String currentNode) {
         this.currentNode = currentNode;
+    }
+
+    public String getGraphNode() {
+        return graphNode;
+    }
+
+    public void setGraphNode(String graphNode) {
+        this.graphNode = graphNode;
+    }
+
+    public AgentRouteDecision getRouteDecision() {
+        return routeDecision;
+    }
+
+    public void setRouteDecision(AgentRouteDecision routeDecision) {
+        this.routeDecision = routeDecision;
+    }
+
+    public AgentNodeResult getLastNodeResult() {
+        return lastNodeResult;
+    }
+
+    public void setLastNodeResult(AgentNodeResult lastNodeResult) {
+        this.lastNodeResult = lastNodeResult;
+    }
+
+    public AgentRunResult getTerminalResult() {
+        return terminalResult;
+    }
+
+    public void setTerminalResult(AgentRunResult terminalResult) {
+        this.terminalResult = terminalResult;
+    }
+
+    public List<AgentRunResult> getStepResults() {
+        return stepResults;
+    }
+
+    public void setStepResults(List<AgentRunResult> stepResults) {
+        this.stepResults = stepResults;
+    }
+
+    public int getNextStepIndex() {
+        return nextStepIndex;
+    }
+
+    public void setNextStepIndex(int nextStepIndex) {
+        this.nextStepIndex = nextStepIndex;
     }
 
     public List<String> getObservations() {

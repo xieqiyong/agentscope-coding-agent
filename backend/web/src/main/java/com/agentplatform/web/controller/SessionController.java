@@ -118,6 +118,7 @@ public class SessionController {
         for (AgentRunEntity run : runs) {
             attachToolCalls(timeline, run, rebuildToolCalls(run.getId()));
             attachPlan(timeline, run, rebuildPlan(run.getId()));
+            attachPlanStepStatuses(timeline, run, rebuildPlanStepStatuses(run.getId()));
         }
         return ApiResponse.success(timeline);
     }
@@ -170,14 +171,7 @@ public class SessionController {
             return;
         }
 
-        int userIndex = -1;
-        for (int i = 0; i < timeline.size(); i++) {
-            Object messageId = timeline.get(i).get("id");
-            if (String.valueOf(run.getUserMessageId()).equals(String.valueOf(messageId))) {
-                userIndex = i;
-                break;
-            }
-        }
+        int userIndex = findUserMessageIndex(timeline, run);
 
         for (int i = Math.max(0, userIndex + 1); i < timeline.size(); i++) {
             Map<String, Object> message = timeline.get(i);
@@ -202,14 +196,7 @@ public class SessionController {
             return;
         }
 
-        int userIndex = -1;
-        for (int i = 0; i < timeline.size(); i++) {
-            Object messageId = timeline.get(i).get("id");
-            if (String.valueOf(run.getUserMessageId()).equals(String.valueOf(messageId))) {
-                userIndex = i;
-                break;
-            }
-        }
+        int userIndex = findUserMessageIndex(timeline, run);
 
         for (int i = Math.max(0, userIndex + 1); i < timeline.size(); i++) {
             Map<String, Object> message = timeline.get(i);
@@ -219,6 +206,73 @@ public class SessionController {
             message.put("plan", plan);
             return;
         }
+
+        Map<String, Object> synthetic = new LinkedHashMap<>();
+        synthetic.put("id", "plan-" + run.getId());
+        synthetic.put("conversationId", run.getConversationId());
+        synthetic.put("sessionId", String.valueOf(run.getConversationId()));
+        synthetic.put("role", "assistant");
+        synthetic.put("content", "");
+        synthetic.put("timestamp", run.getFinishedAt() != null ? run.getFinishedAt() : run.getStartedAt());
+        synthetic.put("createdAt", run.getFinishedAt() != null ? run.getFinishedAt() : run.getStartedAt());
+        synthetic.put("toolCalls", new ArrayList<>());
+        synthetic.put("plan", plan);
+
+        int insertAt = userIndex >= 0 ? Math.min(userIndex + 1, timeline.size()) : timeline.size();
+        timeline.add(insertAt, synthetic);
+    }
+
+    /**
+     * 中文注释：计划执行是另一条 run，步骤状态事件需要折回前面那张计划卡片，否则刷新后会回到 pending。
+     */
+    @SuppressWarnings("unchecked")
+    private void attachPlanStepStatuses(List<Map<String, Object>> timeline,
+                                        AgentRunEntity run,
+                                        List<Map<String, Object>> statuses) {
+        if (statuses.isEmpty()) {
+            return;
+        }
+
+        int userIndex = findUserMessageIndex(timeline, run);
+        Map<String, Object> planMessage = findNearestPlanMessageBefore(timeline, userIndex);
+        if (planMessage == null) {
+            planMessage = findNearestPlanMessageAfter(timeline, userIndex);
+        }
+        if (planMessage == null) {
+            return;
+        }
+
+        Map<String, Object> plan = normalizeMap(planMessage.get("plan"));
+        if (plan == null) {
+            return;
+        }
+        Object rawSteps = plan.get("steps");
+        if (!(rawSteps instanceof List<?> steps)) {
+            return;
+        }
+
+        for (Map<String, Object> status : statuses) {
+            String stepId = firstString(status.get("stepId"));
+            String stepStatus = firstString(status.get("status"));
+            if (!StringUtils.hasText(stepId) || !StringUtils.hasText(stepStatus)) {
+                continue;
+            }
+            for (Object item : steps) {
+                if (!(item instanceof Map<?, ?> rawStep)) {
+                    continue;
+                }
+                Map<String, Object> step = (Map<String, Object>) rawStep;
+                if (stepId.equals(String.valueOf(step.get("id")))) {
+                    step.put("status", stepStatus);
+                    copyIfPresent(status, step, "agentId");
+                    copyIfPresent(status, step, "agentName");
+                    copyIfPresent(status, step, "agentRole");
+                    copyIfPresent(status, step, "modelConfigId");
+                    copyIfPresent(status, step, "modelName");
+                }
+            }
+        }
+        planMessage.put("plan", plan);
     }
 
     private Map<String, Object> rebuildPlan(Long runId) {
@@ -234,6 +288,28 @@ public class SessionController {
             }
         }
         return null;
+    }
+
+    private List<Map<String, Object>> rebuildPlanStepStatuses(Long runId) {
+        List<AgentEventEntity> events = agentEventRepository.findByRunIdOrderByIdAsc(runId);
+        List<Map<String, Object>> statuses = new ArrayList<>();
+        for (AgentEventEntity event : events) {
+            if (!"PLAN_STEP_STATUS_CHANGED".equals(event.getEventType())) {
+                continue;
+            }
+            Map<String, Object> metadata = parseMetadata(event.getMetadataJson());
+            Map<String, Object> status = new LinkedHashMap<>();
+            status.put("stepId", firstString(metadata.get("stepId")));
+            status.put("status", firstString(metadata.get("status")));
+            status.put("agentName", firstString(metadata.get("agentName")));
+            status.put("agentRole", firstString(metadata.get("agentRole")));
+            status.put("agentId", metadata.get("agentId"));
+            status.put("modelConfigId", metadata.get("modelConfigId"));
+            status.put("modelName", firstString(metadata.get("modelName")));
+            status.put("stepTitle", firstString(metadata.get("stepTitle")));
+            statuses.add(status);
+        }
+        return statuses;
     }
 
     private List<Map<String, Object>> rebuildToolCalls(Long runId) {
@@ -293,6 +369,45 @@ public class SessionController {
             }
         }
         return normalized;
+    }
+
+    private void copyIfPresent(Map<String, Object> source, Map<String, Object> target, String key) {
+        Object value = source.get(key);
+        if (value != null && StringUtils.hasText(String.valueOf(value))) {
+            target.put(key, value);
+        }
+    }
+
+    private int findUserMessageIndex(List<Map<String, Object>> timeline, AgentRunEntity run) {
+        for (int i = 0; i < timeline.size(); i++) {
+            Object messageId = timeline.get(i).get("id");
+            if (String.valueOf(run.getUserMessageId()).equals(String.valueOf(messageId))) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private Map<String, Object> findNearestPlanMessageBefore(List<Map<String, Object>> timeline, int userIndex) {
+        int start = userIndex >= 0 ? Math.min(userIndex, timeline.size() - 1) : timeline.size() - 1;
+        for (int i = start; i >= 0; i--) {
+            Map<String, Object> message = timeline.get(i);
+            if ("assistant".equals(message.get("role")) && normalizeMap(message.get("plan")) != null) {
+                return message;
+            }
+        }
+        return null;
+    }
+
+    private Map<String, Object> findNearestPlanMessageAfter(List<Map<String, Object>> timeline, int userIndex) {
+        int start = Math.max(0, userIndex + 1);
+        for (int i = start; i < timeline.size(); i++) {
+            Map<String, Object> message = timeline.get(i);
+            if ("assistant".equals(message.get("role")) && normalizeMap(message.get("plan")) != null) {
+                return message;
+            }
+        }
+        return null;
     }
 
     private Map<String, Object> findOrCreateToolCall(List<Map<String, Object>> toolCalls,

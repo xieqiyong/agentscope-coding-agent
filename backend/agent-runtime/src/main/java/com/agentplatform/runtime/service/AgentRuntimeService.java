@@ -91,6 +91,9 @@ public class AgentRuntimeService {
     @Resource
     private MultiAgentOrchestrator multiAgentOrchestrator;
 
+    @Resource
+    private AgentRunCancellationService cancellationService;
+
     public AgentRunResult executeStreaming(AgentRunCommand command, RuntimeEventSink clientSink) {
         validateCommand(command);
         normalizeRunMode(command);
@@ -106,6 +109,7 @@ public class AgentRuntimeService {
 
         ConversationMessageEntity userMessage = saveUserMessage(conversation.getId(), command.getMessage());
         AgentRunEntity run = lifecycleService.startRun(command, conversation.getId(), userMessage.getId(), traceId);
+        cancellationService.bindCurrentThread(run.getId());
 
         RuntimeEventSink persistedSink = wrapLifecycleSink(run.getId(), traceId, clientSink, started);
         emit(persistedSink, run.getId(), traceId, RuntimeEventType.RUN_STARTED, "运行开始",
@@ -115,6 +119,7 @@ public class AgentRuntimeService {
                 ), elapsedMs(started));
 
         try {
+            cancellationService.assertNotCancelled(run.getId());
             RuntimeContext context = contextBuilder.build(command, conversation.getId(), userMessage.getId(), run.getId(), traceId);
             context.setRuntimeEventSink(persistedSink);
             context.setRunStartedNanos(started);
@@ -129,6 +134,7 @@ public class AgentRuntimeService {
 
             if (isPlanOnly(command)) {
                 AgentRunResult result = multiAgentOrchestrator.planOnly(context, persistedSink);
+                cancellationService.assertNotCancelled(run.getId());
                 saveAssistantMessage(conversation.getId(), result.getAnswer());
                 lifecycleService.completeRun(run.getId(), result);
                 emit(persistedSink, run.getId(), traceId, RuntimeEventType.RUN_FINISHED, "运行完成",
@@ -146,6 +152,7 @@ public class AgentRuntimeService {
                 if (AgentRunStatus.WAITING_APPROVAL.name().equals(result.getStatus())) {
                     return result;
                 }
+                cancellationService.assertNotCancelled(run.getId());
                 saveAssistantMessage(conversation.getId(), result.getAnswer());
                 MemoryCaptureResult memoryCaptureResult = captureMemory(command, conversation.getId(), userMessage.getId(), result.getAnswer());
                 lifecycleService.completeRun(run.getId(), result);
@@ -171,6 +178,7 @@ public class AgentRuntimeService {
                 if (AgentRunStatus.WAITING_APPROVAL.name().equals(result.getStatus())) {
                     return result;
                 }
+                cancellationService.assertNotCancelled(run.getId());
                 saveAssistantMessage(conversation.getId(), result.getAnswer());
                 MemoryCaptureResult memoryCaptureResult = captureMemory(command, conversation.getId(), userMessage.getId(), result.getAnswer());
                 lifecycleService.completeRun(run.getId(), result);
@@ -195,6 +203,7 @@ public class AgentRuntimeService {
             if (AgentRunStatus.WAITING_APPROVAL.name().equals(result.getStatus())) {
                 return result;
             }
+            cancellationService.assertNotCancelled(run.getId());
             saveAssistantMessage(conversation.getId(), result.getAnswer());
             MemoryCaptureResult memoryCaptureResult = captureMemory(command, conversation.getId(), userMessage.getId(), result.getAnswer());
             lifecycleService.completeRun(run.getId(), result);
@@ -212,7 +221,12 @@ public class AgentRuntimeService {
                     ), elapsedMs(started));
             result.setStatus("COMPLETED");
             return result;
+        } catch (AgentRunCancelledException e) {
+            return cancelRunAndEmit(run, persistedSink, started, e.getMessage());
         } catch (Exception e) {
+            if (cancellationService.isCancelled(run.getId()) || hasCause(e, AgentRunCancelledException.class)) {
+                return cancelRunAndEmit(run, persistedSink, started, cancellationService.reason(run.getId()));
+            }
             AgentRunStatus errorStatus = isTimeout(e) ? AgentRunStatus.TIMEOUT : AgentRunStatus.FAILED;
             if (errorStatus == AgentRunStatus.TIMEOUT) {
                 lifecycleService.timeoutRun(run.getId(), e.getMessage());
@@ -222,7 +236,17 @@ public class AgentRuntimeService {
             emit(persistedSink, run.getId(), traceId, RuntimeEventType.RUN_ERROR, "运行异常",
                     e.getMessage(), Map.of("status", errorStatus.name()), elapsedMs(started));
             throw e;
+        } finally {
+            cancellationService.unbind(run.getId());
         }
+    }
+
+    public AgentRunEntity cancelRun(Long runId, String reason) {
+        if (runId == null) {
+            throw new BusinessException(400, "Agent Run ID 不能为空");
+        }
+        cancellationService.cancel(runId, reason);
+        return lifecycleService.cancelRun(runId, StringUtils.hasText(reason) ? reason : "用户取消运行");
     }
 
     public AgentRunResult resumeApprovalStreaming(AgentApprovalCommand command, RuntimeEventSink clientSink) {
@@ -235,6 +259,7 @@ public class AgentRuntimeService {
         if (AgentRunStatus.from(run.getStatus()).isTerminal()) {
             throw new BusinessException(409, "Agent Run 已经结束，不能继续审批恢复：" + run.getStatus());
         }
+        cancellationService.bindCurrentThread(run.getId());
 
         RuntimeEventSink persistedSink = wrapLifecycleSink(run.getId(), run.getTraceId(), clientSink, started);
         AgentRunEntity running = lifecycleService.resumeFromApproval(run.getId());
@@ -243,6 +268,7 @@ public class AgentRuntimeService {
                 Map.of("status", running.getStatus(), "approvalId", approval.getId()), elapsedMs(started));
 
         try {
+            cancellationService.assertNotCancelled(run.getId());
             AgentRunCommand resumeCommand = buildApprovalResumeCommand(command, run);
             if (toolApprovalService.isPlatformToolApproval(approval)) {
                 return resumePlatformToolApproval(command, approval, run, resumeCommand, persistedSink, started);
@@ -272,6 +298,7 @@ public class AgentRuntimeService {
                 return result;
             }
 
+            cancellationService.assertNotCancelled(run.getId());
             saveAssistantMessage(run.getConversationId(), result.getAnswer());
             MemoryCaptureResult memoryCaptureResult = captureMemory(
                     resumeCommand,
@@ -294,7 +321,12 @@ public class AgentRuntimeService {
                     ), elapsedMs(started));
             result.setStatus(AgentRunStatus.COMPLETED.name());
             return result;
+        } catch (AgentRunCancelledException e) {
+            return cancelRunAndEmit(run, persistedSink, started, e.getMessage());
         } catch (Exception e) {
+            if (cancellationService.isCancelled(run.getId()) || hasCause(e, AgentRunCancelledException.class)) {
+                return cancelRunAndEmit(run, persistedSink, started, cancellationService.reason(run.getId()));
+            }
             AgentRunStatus errorStatus = isTimeout(e) ? AgentRunStatus.TIMEOUT : AgentRunStatus.FAILED;
             if (errorStatus == AgentRunStatus.TIMEOUT) {
                 lifecycleService.timeoutRun(run.getId(), e.getMessage());
@@ -304,6 +336,8 @@ public class AgentRuntimeService {
             emit(persistedSink, run.getId(), run.getTraceId(), RuntimeEventType.RUN_ERROR, "运行异常",
                     e.getMessage(), Map.of("status", errorStatus.name()), elapsedMs(started));
             throw e;
+        } finally {
+            cancellationService.unbind(run.getId());
         }
     }
 
@@ -499,6 +533,30 @@ public class AgentRuntimeService {
         sink.emit(RuntimeEvent.of(runId, traceId, type, stage, content, metadata, elapsedMs));
     }
 
+    private AgentRunResult cancelRunAndEmit(AgentRunEntity run, RuntimeEventSink sink, long started, String reason) {
+        String message = StringUtils.hasText(reason) ? reason : "用户取消运行";
+        AgentRunEntity cancelled = lifecycleService.cancelRun(run.getId(), message);
+        emit(sink, run.getId(), run.getTraceId(), RuntimeEventType.RUN_STATUS_CHANGED,
+                "状态变更：运行已取消", message,
+                Map.of("status", AgentRunStatus.CANCELLED.name(), "conversationId", run.getConversationId()),
+                elapsedMs(started));
+        emit(sink, run.getId(), run.getTraceId(), RuntimeEventType.RUN_FINISHED,
+                "运行已取消", message,
+                Map.of("status", AgentRunStatus.CANCELLED.name(), "conversationId", run.getConversationId()),
+                elapsedMs(started));
+
+        AgentRunResult result = new AgentRunResult();
+        result.setRunId(cancelled.getId());
+        result.setConversationId(cancelled.getConversationId());
+        result.setTraceId(cancelled.getTraceId());
+        result.setAnswer("");
+        result.setInputTokens(cancelled.getInputTokens() != null ? cancelled.getInputTokens() : 0);
+        result.setOutputTokens(cancelled.getOutputTokens() != null ? cancelled.getOutputTokens() : 0);
+        result.setModelCallCount(0);
+        result.setStatus(AgentRunStatus.CANCELLED.name());
+        return result;
+    }
+
     private MemoryCaptureResult captureMemory(AgentRunCommand command, Long conversationId,
                                               Long userMessageId, String answer) {
         try {
@@ -531,19 +589,7 @@ public class AgentRuntimeService {
         if (event == null || event.getType() != RuntimeEventType.CONFIRMATION_REQUIRED) {
             return event;
         }
-        Map<String, Object> metadata = new java.util.LinkedHashMap<>(
-                event.getMetadata() != null ? event.getMetadata() : Map.of()
-        );
-        if (metadata.containsKey("approvalId") || metadata.containsKey("approvalRequests")) {
-            event.setMetadata(metadata);
-            return event;
-        }
-        var approvals = toolApprovalService.createPendingApprovals(event);
-        metadata.put("approvalRequests", approvals);
-        if (!approvals.isEmpty()) {
-            metadata.put("approvalId", approvals.get(0).get("approvalId"));
-        }
-        event.setMetadata(metadata);
+        // 中文注释：工具审批已关闭，不再为确认事件创建审批记录。
         return event;
     }
 
@@ -806,12 +852,8 @@ public class AgentRuntimeService {
             return;
         }
         if (event.getType() == RuntimeEventType.CONFIRMATION_REQUIRED) {
-            AgentRunEntity updated = lifecycleService.waitForApproval(runId);
-            if (AgentRunStatus.WAITING_APPROVAL.name().equals(updated.getStatus())) {
-                traceService.recordAndForward(RuntimeEvent.of(runId, traceId, RuntimeEventType.RUN_STATUS_CHANGED,
-                        "状态变更：等待用户确认", "Agent Run 已暂停，等待用户确认后才能继续",
-                        Map.of("status", AgentRunStatus.WAITING_APPROVAL.name()), elapsedMs(startedNanos)), clientSink);
-            }
+            // 中文注释：工具审批已关闭，确认事件不再改变运行状态。
+            return;
         } else if (event.getType() == RuntimeEventType.CONFIRMATION_RESULT) {
             AgentRunEntity updated = lifecycleService.resumeFromApproval(runId);
             if (AgentRunStatus.RUNNING.name().equals(updated.getStatus())) {
@@ -830,6 +872,17 @@ public class AgentRuntimeService {
             }
             String message = current.getMessage();
             if (message != null && message.toLowerCase().contains("timeout")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private boolean hasCause(Throwable throwable, Class<? extends Throwable> expectedType) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (expectedType.isInstance(current)) {
                 return true;
             }
             current = current.getCause();

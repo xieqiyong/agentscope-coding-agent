@@ -75,9 +75,40 @@ public class AgentRunContextBuilder {
         // 第一版暂时直接使用命令中的 key 或配置密文字段；后续应接入真正的密钥解密服务。
         context.setApiKey(firstNonBlank(command.getApiKey(), modelConfig != null ? modelConfig.getApiKeyCipher() : null));
         context.setMaxIterations(firstPositive(command.getMaxIterations(), agent.getMaxIterations(), 8));
-        context.setTimeoutSeconds(firstPositive(command.getTimeoutSeconds(), agent.getTimeoutSeconds(), 120));
+        context.setTimeoutSeconds(firstPositive(command.getTimeoutSeconds(), agent.getTimeoutSeconds(), 86400));
         context.setSystemPrompt(buildSystemPrompt(agent, workspace, activeMemories));
         return context;
+    }
+
+    /**
+     * 将当前运行上下文临时切换到指定 Agent。
+     * 中文注释：多 Agent 编排按步骤切换专家时使用，调用方负责在步骤结束后恢复原上下文。
+     */
+    public boolean applyAgentOverride(RuntimeContext context, Long agentId) {
+        if (context == null || agentId == null) {
+            return false;
+        }
+        AgentEntity agent = agentRepository.findById(agentId).orElse(null);
+        if (agent == null || !"ENABLED".equalsIgnoreCase(agent.getStatus())) {
+            return false;
+        }
+        if (context.getWorkspace() != null && !context.getWorkspace().getId().equals(agent.getWorkspaceId())) {
+            return false;
+        }
+
+        ModelConfigEntity modelConfig = resolveModelConfig(agent);
+        context.setAgent(agent);
+        context.setModelConfig(modelConfig);
+        if (modelConfig != null) {
+            context.setModelBaseUrl(modelConfig.getBaseUrl());
+            context.setModelName(modelConfig.getModelName());
+            context.setApiKey(modelConfig.getApiKeyCipher());
+        }
+        context.setMaxIterations(firstPositive(null, agent.getMaxIterations(), context.getMaxIterations()));
+        context.setTimeoutSeconds(firstPositive(context.getCommand().getTimeoutSeconds(),
+                agent.getTimeoutSeconds(), firstPositive(null, context.getTimeoutSeconds(), 86400)));
+        context.setSystemPrompt(buildSystemPrompt(agent, context.getWorkspace(), context.getActiveMemories()));
+        return true;
     }
 
     private String buildSystemPrompt(AgentEntity agent, WorkspaceEntity workspace, List<MemoryEntryEntity> memories) {
@@ -109,11 +140,11 @@ public class AgentRunContextBuilder {
                 + "2. 当前 workspace 内的普通代码修改，优先使用 apply_patch 或 Edit 直接应用最小修改。\n"
                 + "3. 新建文件、整文件替换或大文件修改时，使用 Write。\n"
                 + "4. 多文件任务必须拆成多个工具调用，不要让用户手动复制粘贴文件内容。\n"
-                + "5. propose_patch 和 propose_file_change 只保存审核提案，不会直接写入磁盘；只有用户明确要求审核、修改敏感文件或高风险变更时才使用。\n"
+                + "5. propose_patch 和 propose_file_change 只保存修改提案，不会直接写入磁盘；需要只生成方案时才使用。\n"
                 + "6. 只有 Write、Edit 或 apply_patch 返回成功后，才能声称文件已经创建或修改完成。\n"
-                + "7. 直接写入工具可能会被平台权限治理暂停并要求用户确认；如果工具结果显示被拒绝或等待确认，不要声称修改已经完成。\n"
-                + "8. Bash 已开放，但只能用于非交互、单行、工作区内、沙箱允许列表中的命令，例如 npm test、npm run build、mvn test、git status、git diff。\n"
-                + "9. Bash 会触发平台权限确认；确认通过后仍可能被命令沙箱拒绝。不要执行破坏性命令、交互命令、管道、重定向或链式 shell 控制符。\n"
+                + "7. 工具权限审批已关闭；文件工具只校验路径必须在当前 workspace 内，Bash 只校验工作目录必须在当前 workspace 内。\n"
+                + "8. Bash 已开放，可用于当前 workspace 内的构建、测试、代码生成和排障命令；命令输出会被平台截断并受超时限制。\n"
+                + "9. 不要在回答正文中输出 DSML、XML、tool_calls、invoke、parameter 等工具调用协议标签；需要工具时必须调用平台工具。\n"
                 + "10. Notebook、子 Agent、任务编排暂未开放，不要假装已经执行这些工具。";
 
         basePrompt = basePrompt + buildAgentBindingsPrompt(agent);
@@ -133,7 +164,7 @@ public class AgentRunContextBuilder {
                 1. 不要臆测工作区文件内容；需要项目事实时必须通过工具读取。
                 2. 所有文件路径都必须视为相对工作区路径。
                 3. 修改代码时优先做最小改动，并在回答里说明实际修改了哪些文件。
-                4. 不要读取或输出密钥、token、证书、私钥等敏感内容。
+                4. 不要在最终回答中主动输出密钥、token、证书、私钥等敏感内容；确需处理时只说明文件和字段位置。
                 5. 工具结果优先于模型猜测；如果证据不足，要明确说明。
                 6. 上方偏好和约束是隐式协作规则，按规则行动即可；不要在回答中主动解释这些规则来自哪里，也不要主动说已经保存或记录，除非用户明确询问已知偏好、项目约束或要求确认保存结果。
                 """.formatted(basePrompt, workspace.getName(), workspace.getRootPath(), memoryText);
@@ -144,7 +175,7 @@ public class AgentRunContextBuilder {
         if (StringUtils.hasText(agent.getSkillsJson())) {
             builder.append("\n\n【当前 Agent 绑定的 Skills 配置】\n")
                     .append(agent.getSkillsJson())
-                    .append("\n这些 Skills 是平台侧配置说明。只有已经注册到平台工具层的能力才能实际执行，所有执行仍受沙箱和用户确认约束。");
+                    .append("\n这些 Skills 是平台侧配置说明。只有已经注册到平台工具层的能力才能实际执行，文件与命令仍受 workspace 边界约束。");
         }
         if (StringUtils.hasText(agent.getMcpServicesJson())) {
             builder.append("\n\n【当前 Agent 绑定的 MCP 服务配置】\n")

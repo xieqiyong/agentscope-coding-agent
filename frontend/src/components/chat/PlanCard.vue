@@ -21,6 +21,20 @@
             <span>{{ step.title }}</span>
           </div>
           <div v-if="step.description" class="step-desc">{{ step.description }}</div>
+          <div class="step-meta">
+            <span v-if="step.agentName" class="agent-pill">
+              <i class="pi pi-sitemap" style="font-size: 0.62rem;"></i>
+              {{ step.agentName }}
+            </span>
+            <span v-if="step.agentRole" class="agent-pill muted">
+              <i class="pi pi-share-alt" style="font-size: 0.62rem;"></i>
+              {{ step.agentRole }}
+            </span>
+            <span v-if="step.modelName" class="agent-pill muted">
+              <i class="pi pi-server" style="font-size: 0.62rem;"></i>
+              {{ step.modelName }}
+            </span>
+          </div>
           <div v-if="step.tools?.length" class="step-tools">
             <span v-for="tool in step.tools" :key="tool" class="tool-pill">{{ tool }}</span>
           </div>
@@ -39,11 +53,11 @@
       <button
         class="execute-btn"
         type="button"
-        :disabled="disabled || allCompleted"
+        :disabled="disabled || executing || allCompleted"
         @click="$emit('execute', plan)"
       >
-        <i :class="['pi', allCompleted ? 'pi-check' : 'pi-play']" style="font-size: 0.7rem;"></i>
-        <span>{{ allCompleted ? '已执行' : '执行计划' }}</span>
+        <i :class="['pi', buttonIcon]" style="font-size: 0.7rem;"></i>
+        <span>{{ buttonText }}</span>
       </button>
     </div>
   </div>
@@ -63,8 +77,30 @@ defineEmits<{
 }>()
 
 const allCompleted = computed(() =>
-  props.plan.steps.length > 0 && props.plan.steps.every((step) => step.status === 'completed'),
+  props.plan.executionStatus === 'completed'
+  || (props.plan.steps.length > 0 && props.plan.steps.every((step) => step.status === 'completed')),
 )
+
+const executing = computed(() =>
+  props.plan.executionStatus === 'running'
+  || props.plan.steps.some((step) => step.status === 'in_progress'),
+)
+
+const buttonText = computed(() => {
+  if (allCompleted.value) return '已执行'
+  if (executing.value) return '执行中'
+  if (props.plan.executionStatus === 'failed') return '重新执行'
+  if (props.plan.executionStatus === 'cancelled') return '继续执行'
+  return '执行计划'
+})
+
+const buttonIcon = computed(() => {
+  if (allCompleted.value) return 'pi-check'
+  if (executing.value) return 'pi-spin pi-spinner'
+  if (props.plan.executionStatus === 'failed') return 'pi-refresh'
+  if (props.plan.executionStatus === 'cancelled') return 'pi-refresh'
+  return 'pi-play'
+})
 
 function stepIcon(status: PlanStep['status']): string {
   const icons: Record<PlanStep['status'], string> = {
@@ -72,6 +108,7 @@ function stepIcon(status: PlanStep['status']): string {
     in_progress: 'pi pi-spin pi-spinner',
     completed: 'pi pi-check',
     failed: 'pi pi-times',
+    cancelled: 'pi pi-stop',
   }
   return icons[status] || 'pi pi-circle'
 }
@@ -167,6 +204,7 @@ function stepIcon(status: PlanStep['status']): string {
 
 .step-icon.completed { color: var(--success); }
 .step-icon.failed { color: var(--danger); }
+.step-icon.cancelled { color: var(--warning); }
 .step-icon.in_progress { color: var(--accent); }
 
 .step-body {
@@ -192,6 +230,33 @@ function stepIcon(status: PlanStep['status']): string {
   font-size: var(--font-size-xs);
   line-height: 1.5;
   margin-top: 2px;
+}
+
+.step-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.agent-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border-color));
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  color: var(--accent-hover);
+  background: color-mix(in srgb, var(--accent-soft) 42%, transparent);
+  font-size: 0.66rem;
+  font-weight: 600;
+}
+
+.agent-pill.muted {
+  color: var(--text-muted);
+  border-color: var(--border-color);
+  background: var(--bg-main);
 }
 
 .step-tools {

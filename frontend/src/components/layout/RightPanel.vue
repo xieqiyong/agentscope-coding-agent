@@ -30,11 +30,9 @@ const uiStore = useUiStore()
 <style scoped>
 .right-panel {
   width: var(--right-panel-width);
-  position: absolute;
-  top: 12px;
-  right: 18px;
-  bottom: 18px;
-  z-index: 8;
+  position: relative;
+  z-index: 2;
+  height: 100%;
   background: rgba(255, 254, 250, 0.94);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
@@ -43,6 +41,7 @@ const uiStore = useUiStore()
   flex-direction: column;
   overflow: hidden;
   backdrop-filter: blur(12px);
+  flex-shrink: 0;
 }
 
 .panel-tabs {
@@ -89,5 +88,16 @@ const uiStore = useUiStore()
   flex: 1;
   overflow-y: auto;
   padding: var(--spacing-sm);
+}
+
+@media (max-width: 1100px) {
+  .right-panel {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    bottom: 12px;
+    height: auto;
+    z-index: 8;
+  }
 }
 </style>

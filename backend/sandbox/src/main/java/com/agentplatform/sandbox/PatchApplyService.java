@@ -141,10 +141,6 @@ public class PatchApplyService {
         if (!StringUtils.hasText(targetPath)) {
             throw new BusinessException(400, "Patch 缺少目标文件路径");
         }
-        if (isSensitivePath(targetPath)) {
-            throw new BusinessException(403, "拒绝修改敏感文件：" + targetPath);
-        }
-
         ResolvedWorkspacePath resolved = sandboxPathResolver.resolvePath(workspaceRoot, targetPath, false);
         Path absolutePath = resolved.absolutePath();
         boolean oldExists = Files.exists(absolutePath);
@@ -407,18 +403,6 @@ public class PatchApplyService {
             }
         }
         return false;
-    }
-
-    private boolean isSensitivePath(String relativePath) {
-        String lower = normalizePath(relativePath).toLowerCase();
-        return lower.endsWith(".env")
-                || lower.contains("/.env")
-                || lower.endsWith(".pem")
-                || lower.endsWith(".key")
-                || lower.contains("id_rsa")
-                || lower.contains("credentials")
-                || lower.contains("secret")
-                || lower.contains("token");
     }
 
     private String normalizePath(String path) {

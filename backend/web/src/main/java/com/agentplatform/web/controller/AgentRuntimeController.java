@@ -53,7 +53,7 @@ public class AgentRuntimeController {
                     sendEvent(emitter, RuntimeEvent.of(null, null, RuntimeEventType.RUN_ERROR,
                             "运行异常", e.getMessage(), Map.of(), 0));
                 }
-                emitter.completeWithError(e);
+                emitter.complete();
             }
         });
         return emitter;
@@ -75,10 +75,22 @@ public class AgentRuntimeController {
                     sendEvent(emitter, RuntimeEvent.of(null, null, RuntimeEventType.RUN_ERROR,
                             "审批恢复异常", e.getMessage(), Map.of(), 0));
                 }
-                emitter.completeWithError(e);
+                emitter.complete();
             }
         });
         return emitter;
+    }
+
+    @PostMapping("/cancel")
+    public Map<String, Object> cancel(@RequestBody Map<String, Object> body) {
+        Long runId = parseLong(body.get("runId"));
+        String reason = body.get("reason") != null ? String.valueOf(body.get("reason")) : "用户取消运行";
+        var run = agentRuntimeService.cancelRun(runId, reason);
+        return Map.of(
+                "runId", run.getId(),
+                "status", run.getStatus(),
+                "reason", reason
+        );
     }
 
     private void markRunError(RuntimeEvent event, AtomicBoolean runErrorForwarded) {
@@ -99,6 +111,13 @@ public class AgentRuntimeController {
             // 中文注释：连接已经完成或超时时，SseEmitter 可能抛出状态异常，这里只记录不拖垮主链路。
             log.warn("SSE 连接状态异常，type={}，runId={}，原因={}", event.getType(), event.getRunId(), e.getMessage());
         }
+    }
+
+    private Long parseLong(Object value) {
+        if (value == null || String.valueOf(value).isBlank()) {
+            return null;
+        }
+        return Long.valueOf(String.valueOf(value));
     }
 
     @PreDestroy

@@ -10,7 +10,6 @@ import com.agentplatform.runtime.model.RuntimeEvent;
 import com.agentplatform.runtime.model.RuntimeEventSink;
 import com.agentplatform.runtime.model.RuntimeEventType;
 import com.agentplatform.runtime.service.ToolApprovalService;
-import com.agentplatform.runtime.service.RuntimeToolGuard;
 import com.agentplatform.runtime.tool.CodingAgentCommandTools;
 import com.agentplatform.runtime.tool.CodingAgentWebSearchTools;
 import com.agentplatform.runtime.tool.CodingAgentWorkspaceTools;
@@ -60,9 +59,6 @@ public class AgentScopeRuntimeAdapter {
     private CommandSandboxService commandSandboxService;
 
     @Resource
-    private RuntimeToolGuard runtimeToolGuard;
-
-    @Resource
     private AgentScopeSessionManager sessionManager;
 
     @Resource
@@ -86,8 +82,8 @@ public class AgentScopeRuntimeAdapter {
 
             return buildResult(context, recorder, inputText(context));
         } catch (Exception e) {
-            if (context.isPlatformApprovalRequired() || hasCause(e, ToolSuspendException.class)) {
-                return buildInterruptedResult(context, recorder, inputText(context));
+            if (isBlockingTimeout(e)) {
+                throw new RuntimeException("AgentScope 执行超时，当前运行超时 " + context.getTimeoutSeconds() + " 秒", e);
             }
             throw new RuntimeException("AgentScope 执行失败: " + e.getMessage(), e);
         }
@@ -105,6 +101,10 @@ public class AgentScopeRuntimeAdapter {
 
             return buildResult(context, recorder, directAnswerInputText(context));
         } catch (Exception e) {
+            if (isBlockingTimeout(e)) {
+                throw new RuntimeException("DirectAnswerAgent 执行超时，当前运行超时 "
+                        + directAnswerTimeoutSeconds(context) + " 秒", e);
+            }
             throw new RuntimeException("DirectAnswerAgent 执行失败: " + e.getMessage(), e);
         }
     }
@@ -133,6 +133,10 @@ public class AgentScopeRuntimeAdapter {
 
             return buildResult(context, recorder, "CONFIRM_RESULT: " + approved);
         } catch (Exception e) {
+            if (isBlockingTimeout(e)) {
+                throw new RuntimeException("AgentScope 审批恢复超时，当前运行超时 "
+                        + context.getTimeoutSeconds() + " 秒", e);
+            }
             throw new RuntimeException("AgentScope 审批恢复失败: " + e.getMessage(), e);
         }
     }
@@ -195,7 +199,7 @@ public class AgentScopeRuntimeAdapter {
         CodingAgentWorkspaceTools workspaceTools =
                 new CodingAgentWorkspaceTools(context, sandboxPathResolver, patchRepository, patchFileRepository, patchApplyService);
         toolkit.registerTool(workspaceTools);
-        toolkit.registerTool(new CodingAgentCommandTools(context, commandSandboxService, runtimeToolGuard));
+        toolkit.registerTool(new CodingAgentCommandTools(context, commandSandboxService));
         toolkit.registerTool(new CodingAgentWebSearchTools());
         return toolkit;
     }
@@ -230,9 +234,7 @@ public class AgentScopeRuntimeAdapter {
         result.setInputTokens(recorder.inputTokensOrEstimate(inputText));
         result.setOutputTokens(recorder.outputTokensOrEstimate(recorder.answer()));
         result.setModelCallCount(recorder.getModelCallCount());
-        result.setStatus(recorder.isConfirmationRequired() || context.isPlatformApprovalRequired()
-                ? "WAITING_APPROVAL"
-                : "COMPLETED");
+        result.setStatus("COMPLETED");
         return result;
     }
 
@@ -242,6 +244,18 @@ public class AgentScopeRuntimeAdapter {
         AgentRunResult result = buildResult(context, recorder, inputText);
         result.setStatus("WAITING_APPROVAL");
         return result;
+    }
+
+    private boolean isBlockingTimeout(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null && message.toLowerCase().contains("timeout")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private boolean hasCause(Throwable throwable, Class<? extends Throwable> expectedType) {

@@ -5,10 +5,11 @@ import { modelConfigApi } from '@/api/modelConfig'
 import type { Confirmation, PlanInfo } from '@/types'
 import type { RuntimeEvent, RuntimeEventType } from '@/types/events'
 
+const sharedAbortController = ref<AbortController | null>(null)
+
 export function useSse() {
   const chatStore = useChatStore()
   const runtimeStore = useRuntimeStore()
-  const abortController = ref<AbortController | null>(null)
   const error = ref<string | null>(null)
 
   /**
@@ -38,7 +39,7 @@ export function useSse() {
     traceThinkingContent?: boolean
   }) {
     error.value = null
-    abortController.value = new AbortController()
+    sharedAbortController.value = new AbortController()
 
     runtimeStore.startAgentRun()
 
@@ -58,7 +59,7 @@ export function useSse() {
   async function respondApproval(confirmation: Confirmation, approved: boolean) {
     if (!confirmation.approvalId) return
     error.value = null
-    abortController.value = new AbortController()
+    sharedAbortController.value = new AbortController()
     runtimeStore.startAgentRun()
 
     try {
@@ -113,7 +114,7 @@ export function useSse() {
         Accept: 'text/event-stream',
       },
       body: JSON.stringify(body),
-      signal: abortController.value?.signal,
+      signal: sharedAbortController.value?.signal,
     })
 
     if (!response.ok) {
@@ -247,10 +248,28 @@ export function useSse() {
     ].filter(Boolean).join(' · ')
   }
 
-  function abort() {
-    if (abortController.value) {
-      abortController.value.abort()
-      abortController.value = null
+  async function abort() {
+    const runId = chatStore.activeRunId
+    if (runId) {
+      try {
+        await fetch('/api/agent-runtime/cancel', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            runId,
+            reason: '用户点击停止生成',
+          }),
+        })
+      } catch (e: any) {
+        runtimeStore.recordWarning(e?.message || '取消运行请求失败')
+      }
+      chatStore.cancelActiveRunLocally()
+    }
+    if (sharedAbortController.value) {
+      sharedAbortController.value.abort()
+      sharedAbortController.value = null
     }
   }
 

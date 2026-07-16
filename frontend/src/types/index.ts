@@ -85,14 +85,19 @@ export interface PlanInfo {
   acceptanceCriteria: string[]
   expectedTools: string[]
   requiresApproval: boolean
+  executionStatus?: 'idle' | 'running' | 'completed' | 'failed' | 'cancelled'
 }
 
 export interface PlanStep {
   id: string
   title: string
   description?: string
-  status: 'pending' | 'in_progress' | 'completed' | 'failed'
+  status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'cancelled'
+  agentId?: string | number
   agentName?: string
+  agentRole?: string
+  modelConfigId?: string | number
+  modelName?: string
   tools: string[]
 }
 
@@ -175,5 +180,3 @@ export interface PatchFile {
   additions: number
   deletions: number
 }
-
-

@@ -13,7 +13,6 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
@@ -21,14 +20,10 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * 命令级沙箱服务。
- * 中文注释：这里负责命令执行前的工作区、命令形态、允许列表、超时和输出截断控制。
+ * 中文注释：这里只保证命令工作目录在 workspace 内，同时保留超时和输出截断控制。
  */
 @Service
 public class CommandSandboxService {
-
-    private static final List<String> FORBIDDEN_CONTROL_OPERATORS = List.of(
-            "&&", "||", ";", "|", "`", "$(", ">", "<"
-    );
 
     @Resource
     private SandboxPathResolver sandboxPathResolver;
@@ -106,124 +101,7 @@ public class CommandSandboxService {
         if (command.contains("\n") || command.contains("\r") || command.indexOf('\0') >= 0) {
             return "命令不能包含换行或空字符";
         }
-
-        String lower = command.toLowerCase(Locale.ROOT);
-        for (String operator : FORBIDDEN_CONTROL_OPERATORS) {
-            if (lower.contains(operator)) {
-                return "命令包含暂未开放的 shell 控制符：" + operator;
-            }
-        }
-        for (String fragment : safeList(properties.getDeniedFragments())) {
-            if (StringUtils.hasText(fragment) && lower.contains(fragment.trim().toLowerCase(Locale.ROOT))) {
-                return "命令命中危险片段：" + fragment;
-            }
-        }
-        List<String> tokens = splitCommand(command);
-        if (tokens.isEmpty()) {
-            return "命令不能为空";
-        }
-        String pathArgumentRejectReason = validatePathArguments(tokens);
-        if (pathArgumentRejectReason != null) {
-            return pathArgumentRejectReason;
-        }
-        String executable = normalizeExecutable(tokens.get(0));
-        for (String denied : safeList(properties.getDeniedInteractiveCommands())) {
-            if (executable.equalsIgnoreCase(normalizeExecutable(denied))) {
-                return "不允许启动交互式命令：" + executable;
-            }
-        }
-        // todo 测试阶段注释
-//        if (!matchesAllowlist(tokens)) {
-//            return "命令不在允许列表内";
-//        }
         return null;
-    }
-
-    private String validatePathArguments(List<String> tokens) {
-        for (String token : tokens) {
-            String normalized = token.replace('\\', '/');
-            if (normalized.equals("..") || normalized.startsWith("../") || normalized.contains("/../")) {
-                return "命令参数不能包含父目录跳转：" + token;
-            }
-            if (normalized.startsWith("~")) {
-                return "命令参数不能使用用户主目录路径：" + token;
-            }
-            if (normalized.matches("^[A-Za-z]:/.*")) {
-                return "命令参数不能使用绝对路径：" + token;
-            }
-            if (normalized.startsWith("/") && !normalized.startsWith("./")) {
-                return "命令参数不能使用绝对路径：" + token;
-            }
-        }
-        return null;
-    }
-
-    private boolean matchesAllowlist(List<String> commandTokens) {
-        for (String prefix : safeList(properties.getAllowlistedPrefixes())) {
-            List<String> prefixTokens = splitCommand(prefix);
-            if (prefixTokens.isEmpty() || commandTokens.size() < prefixTokens.size()) {
-                continue;
-            }
-            boolean matched = true;
-            for (int i = 0; i < prefixTokens.size(); i++) {
-                if (!commandTokens.get(i).equalsIgnoreCase(prefixTokens.get(i))) {
-                    matched = false;
-                    break;
-                }
-            }
-            if (matched) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private List<String> splitCommand(String command) {
-        List<String> tokens = new ArrayList<>();
-        if (!StringUtils.hasText(command)) {
-            return tokens;
-        }
-        StringBuilder current = new StringBuilder();
-        boolean inSingleQuote = false;
-        boolean inDoubleQuote = false;
-        for (int i = 0; i < command.length(); i++) {
-            char ch = command.charAt(i);
-            if (ch == '\'' && !inDoubleQuote) {
-                inSingleQuote = !inSingleQuote;
-                continue;
-            }
-            if (ch == '"' && !inSingleQuote) {
-                inDoubleQuote = !inDoubleQuote;
-                continue;
-            }
-            if (Character.isWhitespace(ch) && !inSingleQuote && !inDoubleQuote) {
-                addToken(tokens, current);
-                continue;
-            }
-            current.append(ch);
-        }
-        addToken(tokens, current);
-        return tokens;
-    }
-
-    private void addToken(List<String> tokens, StringBuilder current) {
-        if (current.length() == 0) {
-            return;
-        }
-        tokens.add(current.toString());
-        current.setLength(0);
-    }
-
-    private String normalizeExecutable(String executable) {
-        if (executable == null) {
-            return "";
-        }
-        String normalized = executable.trim().replace('\\', '/');
-        int slashIndex = normalized.lastIndexOf('/');
-        if (slashIndex >= 0) {
-            normalized = normalized.substring(slashIndex + 1);
-        }
-        return normalized;
     }
 
     private int normalizeTimeout(Integer timeoutSeconds) {

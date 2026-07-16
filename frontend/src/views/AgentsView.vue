@@ -169,7 +169,7 @@ const form = reactive({
   description: '',
   systemPrompt: '',
   maxIterations: 8,
-  timeoutSeconds: 120,
+  timeoutSeconds: 86400,
 })
 
 const registeredSkillOptions = computed(() =>
@@ -219,7 +219,7 @@ function loadAgent(agent: AgentDefinition) {
   form.description = agent.description || ''
   form.systemPrompt = agent.systemPrompt || ''
   form.maxIterations = agent.maxIterations || 8
-  form.timeoutSeconds = agent.timeoutSeconds || 120
+  form.timeoutSeconds = agent.timeoutSeconds || 86400
   selectedRegisteredSkills.value = skillBindings.registered
   selectedRegisteredMcpServices.value = mcpBindings.registered
   skills.value = skillBindings.custom
@@ -239,7 +239,7 @@ function resetForm() {
   form.description = ''
   form.systemPrompt = ''
   form.maxIterations = 8
-  form.timeoutSeconds = 120
+  form.timeoutSeconds = 86400
   selectedRegisteredSkills.value = []
   selectedRegisteredMcpServices.value = []
   skills.value = []

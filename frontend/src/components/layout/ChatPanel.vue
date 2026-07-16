@@ -52,6 +52,7 @@ const agentStore = useAgentStore()
 const sse = useSse()
 const messagesContainer = ref<HTMLElement | null>(null)
 const autoScrollEnabled = ref(true)
+const executingPlanKeys = ref<Set<string>>(new Set())
 const BOTTOM_THRESHOLD = 96
 
 const isLanding = computed(() => (
@@ -119,26 +120,39 @@ async function handleToolApproval(confirmation: Confirmation, approved: boolean)
 
 async function handleExecutePlan(plan: PlanInfo) {
   if (!workspaceStore.currentWorkspace || !agentStore.currentAgent || chatStore.isStreaming) return
+  const planKey = buildPlanKey(plan)
+  if (executingPlanKeys.value.has(planKey) || plan.executionStatus === 'running' || plan.executionStatus === 'completed') {
+    return
+  }
+  executingPlanKeys.value.add(planKey)
+  plan.executionStatus = 'running'
 
   const message = buildPlanExecutionMessage(plan)
   chatStore.addUserMessage(message, { messageKind: 'plan-execute' })
 
-  const modelConfig = await loadModelConfig()
-  const ws = workspaceStore.currentWorkspace
-  const agent = agentStore.currentAgent
-  await sse.start({
-    workspaceId: Number(ws.id),
-    conversationId: chatStore.lastConversationId ?? undefined,
-    message,
-    plan,
-    runMode: 'PLAN_EXECUTE',
-    agentId: Number(agent.id),
-    userId: '1',
-    timeoutSeconds: 86400,
-    modelBaseUrl: modelConfig.modelBaseUrl,
-    modelName: modelConfig.modelName,
-    apiKey: modelConfig.apiKey,
-  })
+  try {
+    const modelConfig = await loadModelConfig()
+    const ws = workspaceStore.currentWorkspace
+    const agent = agentStore.currentAgent
+    await sse.start({
+      workspaceId: Number(ws.id),
+      conversationId: chatStore.lastConversationId ?? undefined,
+      message,
+      plan,
+      runMode: 'PLAN_EXECUTE',
+      agentId: Number(agent.id),
+      userId: '1',
+      timeoutSeconds: 86400,
+      modelBaseUrl: modelConfig.modelBaseUrl,
+      modelName: modelConfig.modelName,
+      apiKey: modelConfig.apiKey,
+    })
+  } finally {
+    executingPlanKeys.value.delete(planKey)
+    if (plan.executionStatus === 'running' && plan.steps.every((step) => step.status !== 'in_progress')) {
+      plan.executionStatus = plan.steps.some((step) => step.status === 'failed') ? 'failed' : 'idle'
+    }
+  }
 }
 
 async function loadModelConfig(): Promise<{
@@ -197,7 +211,29 @@ function formatPlanStep(step: PlanStep, index: number): string {
   if (step.tools.length > 0) {
     parts.push(`   预期工具：${step.tools.join(', ')}`)
   }
+  if (step.agentName || step.agentRole || step.agentId) {
+    const agentParts = [
+      step.agentName ? `名称=${step.agentName}` : '',
+      step.agentRole ? `角色=${step.agentRole}` : '',
+      step.agentId ? `ID=${step.agentId}` : '',
+    ].filter(Boolean)
+    parts.push(`   执行 Agent：${agentParts.join('，')}`)
+  }
+  if (step.modelName || step.modelConfigId) {
+    const modelParts = [
+      step.modelName ? `模型=${step.modelName}` : '',
+      step.modelConfigId ? `配置ID=${step.modelConfigId}` : '',
+    ].filter(Boolean)
+    parts.push(`   模型配置：${modelParts.join('，')}`)
+  }
   return parts.join('\n')
+}
+
+function buildPlanKey(plan: PlanInfo): string {
+  return [
+    plan.title,
+    plan.steps.map((step) => `${step.id}:${step.title}`).join('|'),
+  ].join('::')
 }
 </script>
 
@@ -215,7 +251,7 @@ function formatPlanStep(step: PlanStep, index: number): string {
 
 .chat-panel.landing-mode {
   justify-content: center;
-  padding: 7vh 24px 3vh;
+  padding: 7vh 24px 4vh;
 }
 
 .landing-shell {
@@ -224,7 +260,7 @@ function formatPlanStep(step: PlanStep, index: number): string {
   display: flex;
   flex-direction: column;
   align-items: center;
-  transform: translateY(24px);
+  transform: translateY(44px);
 }
 
 .greeting {
@@ -282,7 +318,7 @@ function formatPlanStep(step: PlanStep, index: number): string {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 28px 0 18px;
+  padding: 18px 0 10px;
 }
 
 @media (max-width: 760px) {

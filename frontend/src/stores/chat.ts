@@ -15,6 +15,8 @@ export const useChatStore = defineStore('chat', () => {
   const pendingConfirmations = ref<Confirmation[]>([])
   // 后端返回的 conversationId，续聊时需要传回。
   const lastConversationId = ref<number | null>(restoreConversationId())
+  // 当前正在运行的 runId，用于停止生成时通知后端取消执行。
+  const activeRunId = ref<number | null>(null)
 
   const currentMessages = computed(() => messages.value)
   const hasPendingConfirmation = computed(() => pendingConfirmations.value.length > 0)
@@ -101,6 +103,7 @@ export const useChatStore = defineStore('chat', () => {
       case 'RUN_STARTED':
       case 'AGENT_STARTED':
         rememberConversationFromEvent(event)
+        rememberActiveRun(event)
         isStreaming.value = true
         streamingText.value = ''
         break
@@ -175,15 +178,21 @@ export const useChatStore = defineStore('chat', () => {
       case 'RUN_FINISHED':
       case 'AGENT_FINISHED':
         rememberConversationFromEvent(event)
+        if (readString(event.metadata?.status).toUpperCase() === 'CANCELLED') {
+          markRunningPlanCancelled()
+        }
         finalizeStreamingMessage()
         // 兜底：扫描所有 toolCall 和回答文本，检测遗漏的 patch 提案
         detectMissedPatchConfirmations()
         isStreaming.value = false
+        activeRunId.value = null
         break
 
       case 'RUN_ERROR':
+        markRunningPlanFailed()
         finalizeStreamingMessage()
         isStreaming.value = false
+        activeRunId.value = null
         if (event.content) {
           messages.value.push({
             id: `error-${Date.now()}`,
@@ -442,7 +451,35 @@ export const useChatStore = defineStore('chat', () => {
     const step = message?.plan?.steps.find((item) => String(item.id) === stepId)
     if (step) {
       step.status = status
+      step.agentId = readString(event.metadata?.agentId) || step.agentId
+      step.agentName = readString(event.metadata?.agentName) || step.agentName
+      step.agentRole = readString(event.metadata?.agentRole) || step.agentRole
+      step.modelConfigId = readString(event.metadata?.modelConfigId) || step.modelConfigId
+      step.modelName = readString(event.metadata?.modelName) || step.modelName
+      if (message?.plan) {
+        refreshPlanExecutionStatus(message.plan)
+      }
     }
+  }
+
+  function refreshPlanExecutionStatus(plan: PlanInfo) {
+    if (plan.steps.some((step) => step.status === 'in_progress')) {
+      plan.executionStatus = 'running'
+      return
+    }
+    if (plan.steps.length > 0 && plan.steps.every((step) => step.status === 'completed')) {
+      plan.executionStatus = 'completed'
+      return
+    }
+    if (plan.steps.some((step) => step.status === 'failed')) {
+      plan.executionStatus = 'failed'
+      return
+    }
+    if (plan.steps.some((step) => step.status === 'cancelled')) {
+      plan.executionStatus = 'cancelled'
+      return
+    }
+    plan.executionStatus = 'idle'
   }
 
   function ensureAssistantRuntimeMessage(): ChatMessage {
@@ -466,6 +503,12 @@ export const useChatStore = defineStore('chat', () => {
     const status = readString(event.metadata?.status).toUpperCase()
     if (status === 'RUNNING') {
       isStreaming.value = true
+    }
+    if (status === 'CANCELLED') {
+      markRunningPlanCancelled()
+      finalizeStreamingMessage()
+      isStreaming.value = false
+      activeRunId.value = null
     }
     if (status === 'WAITING_APPROVAL') {
       isStreaming.value = false
@@ -537,6 +580,7 @@ export const useChatStore = defineStore('chat', () => {
       acceptanceCriteria: readStringList(raw.acceptanceCriteria),
       expectedTools: readStringList(raw.expectedTools),
       requiresApproval: raw.requiresApproval === true,
+      executionStatus: normalizePlanExecutionStatus(raw.executionStatus),
     }
   }
 
@@ -549,17 +593,29 @@ export const useChatStore = defineStore('chat', () => {
       title: readString(raw.title) || `步骤 ${index + 1}`,
       description: readString(raw.description),
       status: normalizePlanStepStatus(raw.status) || 'pending',
+      agentId: readString(raw.agentId) || undefined,
       agentName: readString(raw.agentName) || 'ExecutorAgent',
+      agentRole: readString(raw.agentRole) || undefined,
+      modelConfigId: readString(raw.modelConfigId) || undefined,
+      modelName: readString(raw.modelName) || readString(raw.model),
       tools: readStringList(raw.tools),
     }
   }
 
   function normalizePlanStepStatus(value: unknown): PlanStep['status'] | '' {
     const text = readString(value).toLowerCase()
-    if (text === 'pending' || text === 'in_progress' || text === 'completed' || text === 'failed') {
+    if (text === 'pending' || text === 'in_progress' || text === 'completed' || text === 'failed' || text === 'cancelled') {
       return text
     }
     return ''
+  }
+
+  function normalizePlanExecutionStatus(value: unknown): PlanInfo['executionStatus'] {
+    const text = readString(value).toLowerCase()
+    if (text === 'idle' || text === 'running' || text === 'completed' || text === 'failed' || text === 'cancelled') {
+      return text
+    }
+    return undefined
   }
 
   function readStringList(value: unknown): string[] {
@@ -825,6 +881,33 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  function markRunningPlanFailed() {
+    const message = findLatestPlanMessage()
+    if (!message?.plan || message.plan.executionStatus !== 'running') return
+    const runningStep = message.plan.steps.find((step) => step.status === 'in_progress')
+    if (runningStep) {
+      runningStep.status = 'failed'
+    }
+    refreshPlanExecutionStatus(message.plan)
+  }
+
+  function markRunningPlanCancelled() {
+    const message = findLatestPlanMessage()
+    if (!message?.plan || message.plan.executionStatus !== 'running') return
+    const runningStep = message.plan.steps.find((step) => step.status === 'in_progress')
+    if (runningStep) {
+      runningStep.status = 'cancelled'
+    }
+    message.plan.executionStatus = 'cancelled'
+  }
+
+  function cancelActiveRunLocally() {
+    markRunningPlanCancelled()
+    finalizeStreamingMessage()
+    isStreaming.value = false
+    activeRunId.value = null
+  }
+
   function addUserMessage(content: string, options?: { messageKind?: 'plan-execute' }) {
     messages.value.push({
       id: `user-${Date.now()}`,
@@ -842,6 +925,7 @@ export const useChatStore = defineStore('chat', () => {
     streamingText.value = ''
     pendingConfirmations.value = []
     lastConversationId.value = null
+    activeRunId.value = null
     localStorage.removeItem(STORAGE_CONVERSATION_ID)
   }
 
@@ -867,19 +951,34 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  function rememberActiveRun(event: RuntimeEvent) {
+    if (typeof event.runId === 'number') {
+      activeRunId.value = event.runId
+    }
+  }
+
   function normalizeBackendMessage(row: any): ChatMessage | null {
     const roleText = String(row?.role || '').toLowerCase()
     if (roleText !== 'user' && roleText !== 'assistant') return null
     const plan = normalizePlanInfo(row.plan)
+    const content = String(row.content || '')
     return {
       id: String(row.id || `msg-${Date.now()}`),
       sessionId: String(row.conversationId || row.sessionId || ''),
       role: roleText,
-      content: plan ? '' : String(row.content || ''),
+      content,
+      messageKind: inferMessageKind(roleText, content),
       timestamp: row.createdAt || row.updatedAt || new Date().toISOString(),
       toolCalls: normalizeBackendToolCalls(row.toolCalls),
       plan,
     }
+  }
+
+  function inferMessageKind(role: 'user' | 'assistant', content: string): ChatMessage['messageKind'] | undefined {
+    if (role === 'user' && content.startsWith('执行计划：') && content.includes('请作为 ExecutorAgent')) {
+      return 'plan-execute'
+    }
+    return undefined
   }
 
   function normalizeBackendToolCalls(value: unknown): ToolCallInfo[] | undefined {
@@ -905,6 +1004,7 @@ export const useChatStore = defineStore('chat', () => {
     streamingText,
     pendingConfirmations,
     lastConversationId,
+    activeRunId,
     currentMessages,
     hasPendingConfirmation,
     fetchSessions,
@@ -921,5 +1021,6 @@ export const useChatStore = defineStore('chat', () => {
     clearSession,
     setActiveConversationId,
     restoreConversationId,
+    cancelActiveRunLocally,
   }
 })
