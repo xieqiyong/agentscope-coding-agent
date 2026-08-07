@@ -25,6 +25,10 @@ public class MultiAgentState {
     private AgentRunResult terminalResult;
     private List<AgentRunResult> stepResults = new ArrayList<>();
     private int nextStepIndex;
+    /**
+     * 当前 plan 执行进度的持久化记录 ID（agent_plan_state 表），中断后续接用
+     */
+    private Long planStateId;
     private List<String> observations = new ArrayList<>();
     private List<String> errors = new ArrayList<>();
 
@@ -122,6 +126,14 @@ public class MultiAgentState {
 
     public void setNextStepIndex(int nextStepIndex) {
         this.nextStepIndex = nextStepIndex;
+    }
+
+    public Long getPlanStateId() {
+        return planStateId;
+    }
+
+    public void setPlanStateId(Long planStateId) {
+        this.planStateId = planStateId;
     }
 
     public List<String> getObservations() {

@@ -70,10 +70,15 @@ public class AgentRunContextBuilder {
         context.setTraceId(traceId);
         context.setRecentMessages(recentMessages);
         context.setActiveMemories(activeMemories);
-        context.setModelBaseUrl(firstNonBlank(command.getModelBaseUrl(), modelConfig != null ? modelConfig.getBaseUrl() : null));
-        context.setModelName(firstNonBlank(command.getModelName(), modelConfig != null ? modelConfig.getModelName() : null));
+        // 模型优先级：Agent 绑定的模型（resolveModelConfig 已含默认兜底）优先，命令参数退为 fallback。
+        // 这样不同 Agent 可以绑定不同模型；Agent 没绑定时 resolveModelConfig 返回默认配置，行为与原 command 优先一致。
+        String resolvedBaseUrl = modelConfig != null ? modelConfig.getBaseUrl() : null;
+        String resolvedModelName = modelConfig != null ? modelConfig.getModelName() : null;
+        String resolvedApiKey = modelConfig != null ? modelConfig.getApiKeyCipher() : null;
+        context.setModelBaseUrl(firstNonBlank(resolvedBaseUrl, command.getModelBaseUrl()));
+        context.setModelName(firstNonBlank(resolvedModelName, command.getModelName()));
         // 第一版暂时直接使用命令中的 key 或配置密文字段；后续应接入真正的密钥解密服务。
-        context.setApiKey(firstNonBlank(command.getApiKey(), modelConfig != null ? modelConfig.getApiKeyCipher() : null));
+        context.setApiKey(firstNonBlank(resolvedApiKey, command.getApiKey()));
         context.setMaxIterations(firstPositive(command.getMaxIterations(), agent.getMaxIterations(), 8));
         context.setTimeoutSeconds(firstPositive(command.getTimeoutSeconds(), agent.getTimeoutSeconds(), 86400));
         context.setSystemPrompt(buildSystemPrompt(agent, workspace, activeMemories));

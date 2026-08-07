@@ -1,6 +1,8 @@
 package com.agentplatform.runtime.multiagent;
 
+import com.agentplatform.persistence.entity.AgentPlanStateEntity;
 import com.agentplatform.persistence.enums.AgentRunStatus;
+import com.agentplatform.persistence.repository.AgentPlanStateRepository;
 import com.agentplatform.runtime.agentscope.AgentScopeRuntimeAdapter;
 import com.agentplatform.runtime.model.AgentRunResult;
 import com.agentplatform.runtime.model.RuntimeContext;
@@ -41,6 +43,9 @@ public class MultiAgentOrchestrator {
 
     @Resource
     private AgentRunCancellationService cancellationService;
+
+    @Resource
+    private AgentPlanStateRepository agentPlanStateRepository;
 
     public AgentRunResult planOnly(RuntimeContext context, RuntimeEventSink sink) {
         MultiAgentState state = newState(context, sink, "PLAN_ONLY");
@@ -188,7 +193,19 @@ public class MultiAgentOrchestrator {
         state.setTerminalResult(null);
         state.setNextStepIndex(0);
         state.setStepResults(new ArrayList<>());
-        buildPlanExecutionGraph().run(state);
+        // 创建 plan 执行进度记录，用于中断后从断点续接
+        AgentPlanStateEntity planState = createPlanState(state);
+        state.setPlanStateId(planState.getId());
+        try {
+            buildPlanExecutionGraph().run(state);
+        } catch (Exception e) {
+            if (cancellationService.isCancelled(state.getRuntimeContext().getRunId())) {
+                // 中断时落盘 INTERRUPTED，"继续"可从此处续接
+                markPlanStateStatus(state.getPlanStateId(), "INTERRUPTED");
+            }
+            throw e;
+        }
+        markPlanStateStatus(state.getPlanStateId(), "COMPLETED");
         return state.getTerminalResult();
     }
 
@@ -253,6 +270,8 @@ public class MultiAgentOrchestrator {
             return;
         }
         state.setNextStepIndex(stepIndex + 1);
+        // 持久化断点：每完成一步更新 next_step_index，中断后从此处续接
+        updatePlanStateProgress(state.getPlanStateId(), stepIndex + 1);
     }
 
     private AgentRunResult executeWholePlan(MultiAgentState state) {
@@ -403,6 +422,90 @@ public class MultiAgentOrchestrator {
                         "requiresWorkspaceEvidence", decision.isRequiresWorkspaceEvidence(),
                         "requiresReview", decision.isRequiresReview()
                 ));
+    }
+
+    // ===== plan 执行进度持久化（中断续接） =====
+
+    private AgentPlanStateEntity createPlanState(MultiAgentState state) {
+        AgentPlanStateEntity entity = new AgentPlanStateEntity();
+        entity.setConversationId(state.getRuntimeContext().getConversationId());
+        entity.setRunId(state.getRuntimeContext().getRunId());
+        try {
+            entity.setPlanJson(objectMapper.writeValueAsString(state.getPlan()));
+        } catch (Exception e) {
+            entity.setPlanJson("{}");
+        }
+        entity.setNextStepIndex(0);
+        entity.setStatus("RUNNING");
+        return agentPlanStateRepository.save(entity);
+    }
+
+    private void updatePlanStateProgress(Long planStateId, int nextStepIndex) {
+        if (planStateId == null) {
+            return;
+        }
+        agentPlanStateRepository.findById(planStateId).ifPresent(entity -> {
+            entity.setNextStepIndex(nextStepIndex);
+            agentPlanStateRepository.save(entity);
+        });
+    }
+
+    private void markPlanStateStatus(Long planStateId, String status) {
+        if (planStateId == null) {
+            return;
+        }
+        agentPlanStateRepository.findById(planStateId).ifPresent(entity -> {
+            entity.setStatus(status);
+            agentPlanStateRepository.save(entity);
+        });
+    }
+
+    /**
+     * 从中断点续接 plan 执行。
+     * 还原 plan，把已完成步骤（< nextStepIndex）标记 completed、其余 pending，从 nextStepIndex 继续执行剩余步骤。
+     */
+    public AgentRunResult resumePlanAndExecute(RuntimeContext context, RuntimeEventSink sink,
+                                               AgentPlanStateEntity planState) {
+        MultiAgentState state = newState(context, sink, "PLAN_EXECUTE");
+        AgentPlan plan;
+        try {
+            plan = objectMapper.readValue(planState.getPlanJson(), AgentPlan.class);
+        } catch (Exception e) {
+            throw new RuntimeException("恢复计划失败，planJson 解析异常：" + e.getMessage(), e);
+        }
+        int resumeIndex = planState.getNextStepIndex();
+        if (plan.getSteps() != null) {
+            for (int i = 0; i < plan.getSteps().size(); i++) {
+                plan.getSteps().get(i).setStatus(i < resumeIndex ? "completed" : "pending");
+            }
+        }
+        state.setPlan(plan);
+        state.setNextStepIndex(resumeIndex);
+        state.setStepResults(new ArrayList<>());
+
+        // plan_state 接管为 RUNNING
+        planState.setStatus("RUNNING");
+        AgentPlanStateEntity running = agentPlanStateRepository.save(planState);
+        state.setPlanStateId(running.getId());
+
+        // 提示前端续接 + 重发 plan 让卡片恢复
+        emit(context, sink, RuntimeEventType.RUNTIME_WARNING, "计划续接",
+                "检测到未完成的计划，从第 " + (resumeIndex + 1) + " 步继续执行",
+                Map.of("mode", state.getMode(), "resumeFrom", resumeIndex));
+        emit(context, sink, RuntimeEventType.PLAN_CREATED, "计划已恢复",
+                plan.getSummary(), Map.of("plan", plan));
+
+        try {
+            // 直接跑执行图，不调 runPlanExecutionGraph（它会重置 nextStepIndex=0）
+            buildPlanExecutionGraph().run(state);
+        } catch (Exception e) {
+            if (cancellationService.isCancelled(context.getRunId())) {
+                markPlanStateStatus(state.getPlanStateId(), "INTERRUPTED");
+            }
+            throw e;
+        }
+        markPlanStateStatus(state.getPlanStateId(), "COMPLETED");
+        return state.getTerminalResult();
     }
 
     private void emit(RuntimeContext context, RuntimeEventSink sink, RuntimeEventType type,

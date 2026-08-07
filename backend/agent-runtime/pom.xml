@@ -39,6 +39,11 @@
             <artifactId>agentscope</artifactId>
         </dependency>
         <dependency>
+            <!-- harness 底座：包装 ReActAgent，自带 workspace/filesystem/skill/subagent/memory 抽象 -->
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-harness</artifactId>
+        </dependency>
+        <dependency>
             <groupId>io.lettuce</groupId>
             <artifactId>lettuce-core</artifactId>
             <version>6.4.2.RELEASE</version>

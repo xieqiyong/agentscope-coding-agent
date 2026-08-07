@@ -26,10 +26,13 @@ import io.agentscope.core.permission.PermissionContextState;
 import io.agentscope.core.permission.PermissionRule;
 import io.agentscope.core.tool.ToolSuspendException;
 import io.agentscope.core.tool.Toolkit;
+import io.agentscope.harness.agent.HarnessAgent;
+import io.agentscope.harness.agent.filesystem.spec.LocalFilesystemSpec;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -64,6 +67,9 @@ public class AgentScopeRuntimeAdapter {
     @Resource
     private AgentScopePermissionContextFactory permissionContextFactory;
 
+    @Resource
+    private AgentScopeHarnessProperties harnessProperties;
+
     public AgentRunResult execute(RuntimeContext context, RuntimeEventSink sink) {
         validateModel(context);
         long startedNanos = System.nanoTime();
@@ -73,19 +79,47 @@ public class AgentScopeRuntimeAdapter {
         emitSessionLoaded(context, sink, sessionBinding, elapsedMs(startedNanos));
 
         AgentScopeTraceRecorder recorder = new AgentScopeTraceRecorder(context, sink);
-        try (ReActAgent agent = buildAgent(context, sessionBinding)) {
+        try {
             List<Msg> inputMessages = buildInputMessages(context);
-            agent.streamEvents(inputMessages)
-                    .doOnNext(recorder::record)
-                    .collectList()
-                    .block(Duration.ofSeconds(context.getTimeoutSeconds()));
-
+            // 按开关在 harness 底座与原 ReActAgent 之间分流。两者 streamEvents 都返回 core.event.AgentEvent，
+            // 复用同一个 recorder 做旁路观察和翻译。
+            if (harnessProperties.isEnabled()) {
+                runHarness(context, sessionBinding, recorder, inputMessages);
+            } else {
+                runReact(context, sessionBinding, recorder, inputMessages);
+            }
             return buildResult(context, recorder, inputText(context));
         } catch (Exception e) {
             if (isBlockingTimeout(e)) {
                 throw new RuntimeException("AgentScope 执行超时，当前运行超时 " + context.getTimeoutSeconds() + " 秒", e);
             }
             throw new RuntimeException("AgentScope 执行失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 原路径：用 ReActAgent + 手写工作区工具执行。
+     */
+    private void runReact(RuntimeContext context, AgentScopeSessionBinding sessionBinding,
+                          AgentScopeTraceRecorder recorder, List<Msg> inputMessages) throws Exception {
+        try (ReActAgent agent = buildAgent(context, sessionBinding)) {
+            agent.streamEvents(inputMessages)
+                    .doOnNext(recorder::record)
+                    .collectList()
+                    .block(Duration.ofSeconds(context.getTimeoutSeconds()));
+        }
+    }
+
+    /**
+     * harness 路径：用 HarnessAgent + 自带 FilesystemTool 执行。
+     */
+    private void runHarness(RuntimeContext context, AgentScopeSessionBinding sessionBinding,
+                            AgentScopeTraceRecorder recorder, List<Msg> inputMessages) throws Exception {
+        try (HarnessAgent agent = buildHarnessAgent(context, sessionBinding)) {
+            agent.streamEvents(inputMessages)
+                    .doOnNext(recorder::record)
+                    .collectList()
+                    .block(Duration.ofSeconds(context.getTimeoutSeconds()));
         }
     }
 
@@ -160,6 +194,40 @@ public class AgentScopeRuntimeAdapter {
         ReActAgent agent = agentBuilder.build();
         applyRuntimePermissionRules(agent, permissionContext);
         return agent;
+    }
+
+    /**
+     * 构建 harness 底座 Agent（PoC）。
+     * 用 harness 自带的 workspace + 本地只读文件系统 + FilesystemTool 替代手写工具，
+     * 关闭 shell/memory/subagent/skill 等高级能力以收敛验证范围。model/stateStore/permission 复用现有逻辑。
+     */
+    private HarnessAgent buildHarnessAgent(RuntimeContext context, AgentScopeSessionBinding sessionBinding) {
+        String rootPath = context.getWorkspace().getRootPath();
+        LocalFilesystemSpec filesystemSpec = new LocalFilesystemSpec()
+                .project(Path.of(rootPath))
+                .projectWritable(false);
+
+        HarnessAgent.Builder builder = HarnessAgent.builder()
+                .name("coding-agent-harness")
+                .description("基于 harness 底座的编码智能体")
+                .sysPrompt(context.getSystemPrompt())
+                .model(buildModel(context))
+                .workspace(rootPath)
+                .filesystem(filesystemSpec)
+                .permissionContext(permissionContextFactory.build())
+                .maxIters(context.getMaxIterations())
+                .disableShellTool()
+                .disableMemoryTools()
+                .disableSubagents()
+                .disableDynamicSkills()
+                .disableDefaultWorkspaceSkills();
+
+        if (sessionBinding.isEnabled()) {
+            builder.stateStore(sessionBinding.getStateStore())
+                    .defaultSessionId(sessionBinding.getSessionId())
+                    .enablePendingToolRecovery(true);
+        }
+        return builder.build();
     }
 
     private ReActAgent buildDirectAnswerAgent(RuntimeContext context) {

@@ -245,6 +245,16 @@ export const useChatStore = defineStore('chat', () => {
       lastMsg.isStreaming = false
       lastMsg.id = `msg-${Date.now()}`
     }
+    // 兜底收尾：中断（取消）时 THINKING_FINISHED 事件不会到达，需主动把仍在思考/运行的状态收尾，
+    // 否则 UI 会一直显示"正在思考"。正常运行结束时这些已是 done/completed，这里只是保险。
+    if (lastMsg?.thinking && lastMsg.thinking.status === 'thinking') {
+      lastMsg.thinking.status = 'done'
+    }
+    if (lastMsg?.toolCalls) {
+      for (const tc of lastMsg.toolCalls) {
+        if (tc.status === 'running') tc.status = 'completed'
+      }
+    }
     streamingText.value = ''
   }
 

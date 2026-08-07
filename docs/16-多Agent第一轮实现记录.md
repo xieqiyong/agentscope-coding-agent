@@ -373,6 +373,12 @@ RUN_STATUS_CHANGED: WAITING_APPROVAL
 
 ## 后续演进
 
+未来三个版本的详细拆分见：
+
+```text
+docs/17-未来三个版本迭代计划.md
+```
+
 下一步可以按这个顺序扩展：
 
 1. 专用 `ExecutorAgent`：从复用旧单体 Agent，演进为更窄工具集、更强步骤控制的专用执行节点。

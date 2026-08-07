@@ -46,7 +46,7 @@ public class WorkspaceController {
         return ApiResponse.success(workspaceService.browseLocalDirectories(path));
     }
 
-    @PutMapping("/{id}")
+    @PostMapping("/{id}/update")
     public ApiResponse<WorkspaceEntity> update(@PathVariable Long id,
                                                @RequestBody Map<String, String> body) {
         WorkspaceEntity entity = workspaceService.update(
@@ -57,7 +57,7 @@ public class WorkspaceController {
         return ApiResponse.success(entity);
     }
 
-    @DeleteMapping("/{id}")
+    @PostMapping("/{id}/delete")
     public ApiResponse<Void> delete(@PathVariable Long id) {
         workspaceService.delete(id);
         return ApiResponse.success(null);

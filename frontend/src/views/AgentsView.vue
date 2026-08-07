@@ -73,6 +73,18 @@
               <span>超时秒数</span>
               <input v-model.number="form.timeoutSeconds" class="plain-input" type="number" min="30" max="86400" />
             </label>
+            <label>
+              <span>模型配置</span>
+              <Select
+                v-model="form.modelConfigId"
+                :options="modelConfigOptions"
+                optionLabel="label"
+                optionValue="value"
+                placeholder="使用默认模型"
+                :showClear="true"
+                class="model-select"
+              />
+            </label>
           </div>
         </div>
 
@@ -148,9 +160,12 @@ import { useToast } from 'primevue/usetoast'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
+import Select from 'primevue/select'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useAgentStore } from '@/stores/agent'
 import { toolDefinitionApi } from '@/api/toolDefinition'
+import { modelConfigApi } from '@/api/modelConfig'
+import type { ModelConfig } from '@/api/modelConfig'
 import type { AgentDefinition, ToolDefinition } from '@/types'
 
 const workspaceStore = useWorkspaceStore()
@@ -162,12 +177,22 @@ const mcpServices = ref<string[]>([])
 const selectedRegisteredSkills = ref<string[]>([])
 const selectedRegisteredMcpServices = ref<string[]>([])
 const availableTools = ref<ToolDefinition[]>([])
+// 可选模型配置列表，供 Agent 绑定不同模型
+const modelConfigs = ref<ModelConfig[]>([])
+
+const modelConfigOptions = computed(() =>
+  modelConfigs.value.map((mc) => ({
+    label: mc.name ? `${mc.name}（${mc.modelName}）` : mc.modelName,
+    value: mc.id,
+  })),
+)
 
 const form = reactive({
   id: '',
   name: '',
   description: '',
   systemPrompt: '',
+  modelConfigId: null as string | number | null,
   maxIterations: 8,
   timeoutSeconds: 86400,
 })
@@ -191,8 +216,18 @@ onMounted(async () => {
     }
   }
   await reloadToolDefinitions()
+  await loadModelConfigs()
   await reloadAgents()
 })
+
+async function loadModelConfigs() {
+  try {
+    const res: any = await modelConfigApi.list()
+    modelConfigs.value = res.data || []
+  } catch {
+    modelConfigs.value = []
+  }
+}
 
 async function reloadToolDefinitions() {
   try {
@@ -218,6 +253,7 @@ function loadAgent(agent: AgentDefinition) {
   form.name = agent.name
   form.description = agent.description || ''
   form.systemPrompt = agent.systemPrompt || ''
+  form.modelConfigId = agent.modelConfigId ?? null
   form.maxIterations = agent.maxIterations || 8
   form.timeoutSeconds = agent.timeoutSeconds || 86400
   selectedRegisteredSkills.value = skillBindings.registered
@@ -238,6 +274,7 @@ function resetForm() {
   form.name = ''
   form.description = ''
   form.systemPrompt = ''
+  form.modelConfigId = null
   form.maxIterations = 8
   form.timeoutSeconds = 86400
   selectedRegisteredSkills.value = []
@@ -265,6 +302,7 @@ async function saveAgent() {
       systemPrompt: form.systemPrompt,
       skillsJson: JSON.stringify(mergeBindings(selectedRegisteredSkills.value, skills.value)),
       mcpServicesJson: JSON.stringify(mergeBindings(selectedRegisteredMcpServices.value, mcpServices.value)),
+      modelConfigId: form.modelConfigId,
       maxIterations: form.maxIterations,
       timeoutSeconds: form.timeoutSeconds,
     }

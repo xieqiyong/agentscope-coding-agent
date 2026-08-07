@@ -387,6 +387,7 @@ docs/13-工具权限治理实现记录.md
 docs/14-命令级沙箱实现记录.md
 docs/15-平台级ToolGuard与Interrupt设计记录.md
 docs/16-多Agent第一轮实现记录.md
+docs/17-未来三个版本迭代计划.md
 ```
 
 如果你希望让 AI Coding Agent 继续接手本项目，请先阅读：

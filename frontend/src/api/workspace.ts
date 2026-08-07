@@ -13,9 +13,9 @@ export const workspaceApi = {
     api.post('/workspaces/browse-directories', data),
 
   update: (id: string, data: Partial<Workspace>): Promise<any> =>
-    api.put(`/workspaces/${id}`, data),
+    api.post(`/workspaces/${id}/update`, data),
 
-  delete: (id: string): Promise<any> => api.delete(`/workspaces/${id}`),
+  delete: (id: string): Promise<any> => api.post(`/workspaces/${id}/delete`),
 
   getFileTree: (id: string): Promise<any> => api.get(`/workspaces/${id}/tree`),
 }

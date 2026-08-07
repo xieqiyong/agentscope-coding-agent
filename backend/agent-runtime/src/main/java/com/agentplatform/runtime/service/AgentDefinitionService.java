@@ -94,9 +94,8 @@ public class AgentDefinitionService {
         if (timeoutSeconds != null) {
             entity.setTimeoutSeconds(firstPositive(timeoutSeconds, entity.getTimeoutSeconds()));
         }
-        if (modelConfigId != null) {
-            entity.setModelConfigId(modelConfigId);
-        }
+        // modelConfigId 允许清空（null 表示回退默认模型），所以总是 set；前端会显式传值或 null。
+        entity.setModelConfigId(modelConfigId);
         if (StringUtils.hasText(status)) {
             entity.setStatus(status.trim().toUpperCase());
         }

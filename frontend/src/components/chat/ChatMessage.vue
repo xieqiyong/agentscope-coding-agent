@@ -68,6 +68,7 @@
         @reject="$emit('rejectConfirmation', $event)"
       />
 
+      <!-- 计划：内联 todo 列表（opencode 式）。普通任务自动执行无按钮，/plan 才显示执行按钮 -->
       <PlanCard
         v-if="message.plan"
         :plan="message.plan"
@@ -473,6 +474,8 @@ function isCommandTool(toolName: string): boolean {
   padding: 10px 14px;
   border-radius: 18px;
   border-left: none;
+  /* 宽度贴合内容：短消息气泡不再固定 80% 宽、左侧不留大片空白；最长仍限制 80% */
+  width: fit-content;
   max-width: 80%;
   text-align: right;
   margin-left: auto;

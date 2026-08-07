@@ -6,8 +6,20 @@
     </div>
 
     <div class="form-group">
-      <label>选择本地目录</label>
-      <div class="path-picker">
+      <label>工作区路径</label>
+      <div class="path-input-row">
+        <InputText v-model="form.rootPath" class="w-full" placeholder="粘贴绝对路径，或点右侧「浏览」选择目录" />
+        <Button
+          :label="browserOpen ? '收起' : '浏览'"
+          :icon="browserOpen ? 'pi pi-chevron-up' : 'pi pi-folder'"
+          severity="secondary"
+          text
+          @click="toggleBrowser"
+        />
+      </div>
+
+      <!-- 目录浏览器：默认折叠，点「浏览」展开；选中目录会回填到上方路径输入框 -->
+      <div v-show="browserOpen" class="path-picker">
         <div class="picker-toolbar">
           <Button label="磁盘" icon="pi pi-database" text size="small" @click="loadDirectory(null)" />
           <Button
@@ -83,7 +95,7 @@
           />
         </div>
       </div>
-      <small class="form-hint">只展示本地磁盘和目录，不需要手动输入路径。</small>
+      <small class="form-hint">可直接粘贴本地绝对路径；也可点「浏览」逐级选择目录。</small>
     </div>
 
     <div class="form-group">
@@ -139,6 +151,9 @@ const browser = reactive({
   entries: [] as DirectoryEntry[],
 })
 
+// 目录浏览器默认折叠，优先使用粘贴路径的轻量模式
+const browserOpen = ref(false)
+
 watch(
   () => visible.value,
   (opened) => {
@@ -147,6 +162,24 @@ watch(
     }
   },
 )
+
+// 路径变化时自动推断工作区名（仅当用户未手动填写名称）
+watch(
+  () => form.rootPath,
+  (path) => {
+    if (path && !form.name.trim()) {
+      form.name = inferWorkspaceName(path)
+    }
+  },
+)
+
+function toggleBrowser() {
+  browserOpen.value = !browserOpen.value
+  // 首次展开时懒加载磁盘根目录
+  if (browserOpen.value && browser.entries.length === 0) {
+    void loadDirectory(null)
+  }
+}
 
 async function loadDirectory(path: string | null) {
   browseLoading.value = true
@@ -220,6 +253,13 @@ async function submit() {
 
 .w-full {
   width: 100%;
+}
+
+.path-input-row {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: center;
+  margin-bottom: var(--spacing-sm);
 }
 
 .path-picker {

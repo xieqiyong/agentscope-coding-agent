@@ -63,6 +63,41 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
 
+  async function updateWorkspace(id: string, data: Partial<Workspace>) {
+    error.value = null
+    try {
+      const res: any = await workspaceApi.update(id, data)
+      const updated = res.data
+      const index = workspaces.value.findIndex((w) => String(w.id) === String(id))
+      if (index >= 0) {
+        workspaces.value[index] = updated
+      }
+      // 同步当前工作区，保证 TopBar 与依赖 currentWorkspace 的组件立即刷新
+      if (currentWorkspace.value && String(currentWorkspace.value.id) === String(id)) {
+        currentWorkspace.value = updated
+      }
+      return updated
+    } catch (e: any) {
+      error.value = e.message || '更新工作区失败'
+      throw e
+    }
+  }
+
+  async function deleteWorkspace(id: string) {
+    error.value = null
+    try {
+      await workspaceApi.delete(id)
+      workspaces.value = workspaces.value.filter((w) => String(w.id) !== String(id))
+      // 删除的是当前工作区时清空选择，让 landing 引导用户重新选择或注册
+      if (currentWorkspace.value && String(currentWorkspace.value.id) === String(id)) {
+        clearWorkspace()
+      }
+    } catch (e: any) {
+      error.value = e.message || '删除工作区失败'
+      throw e
+    }
+  }
+
   async function fetchFileTree() {
     if (!currentWorkspace.value) return
     try {
@@ -94,6 +129,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     fetchWorkspaces,
     selectWorkspace,
     registerWorkspace,
+    updateWorkspace,
+    deleteWorkspace,
     fetchFileTree,
     restoreWorkspaceId,
     clearWorkspace,

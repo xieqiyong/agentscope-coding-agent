@@ -4,8 +4,11 @@
       <button class="topbar-icon-btn" @click="uiStore.toggleLeftSidebar()" title="切换侧栏">
         <i class="pi pi-bars"></i>
       </button>
-      <button class="topbar-icon-btn" @click="showRegisterDialog = true" title="注册新工作区">
+      <button class="topbar-icon-btn" @click="uiStore.openRegisterDialog()" title="注册新工作区">
         <i class="pi pi-plus"></i>
+      </button>
+      <button class="topbar-icon-btn" @click="manageDialogVisible = true" title="管理工作区">
+        <i class="pi pi-list"></i>
       </button>
     </div>
 
@@ -13,13 +16,21 @@
       <div class="workspace-pill">
         <Select
           v-model="selectedWorkspaceId"
-          :options="workspaceOptions"
-          optionLabel="label"
-          optionValue="value"
+          :options="workspaceStore.workspaces"
+          optionLabel="name"
+          optionValue="id"
+          filter
           placeholder="选择工作区"
           class="workspace-select"
           @change="onWorkspaceChange"
-        />
+        >
+          <template #option="slotProps">
+            <div class="ws-option">
+              <span class="ws-option-name">{{ slotProps.option.name }}</span>
+              <span class="ws-option-path">{{ slotProps.option.rootPath }}</span>
+            </div>
+          </template>
+        </Select>
         <span class="pill-divider">·</span>
         <Select
           v-model="selectedAgentId"
@@ -51,7 +62,8 @@
       </router-link>
     </div>
 
-    <RegisterWorkspaceDialog v-model:visible="showRegisterDialog" />
+    <RegisterWorkspaceDialog v-model:visible="registerDialogVisible" />
+    <WorkspaceManageDialog v-model:visible="manageDialogVisible" />
   </header>
 </template>
 
@@ -62,6 +74,7 @@ import { useUiStore } from '@/stores/ui'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useAgentStore } from '@/stores/agent'
 import RegisterWorkspaceDialog from '@/components/workspace/RegisterWorkspaceDialog.vue'
+import WorkspaceManageDialog from '@/components/workspace/WorkspaceManageDialog.vue'
 
 const uiStore = useUiStore()
 const workspaceStore = useWorkspaceStore()
@@ -69,9 +82,15 @@ const agentStore = useAgentStore()
 
 const selectedWorkspaceId = ref<string | null>(workspaceStore.currentWorkspace?.id || null)
 const selectedAgentId = ref<string | null>(agentStore.currentAgent?.id || null)
-const showRegisterDialog = ref(false)
 
-const workspaceOptions = computed(() => workspaceStore.workspaceOptions)
+// 注册对话框状态托管在 uiStore，ChatPanel 空状态引导复用同一入口
+const registerDialogVisible = computed({
+  get: () => uiStore.registerDialogOpen,
+  set: (v: boolean) => (v ? uiStore.openRegisterDialog() : uiStore.closeRegisterDialog()),
+})
+
+const manageDialogVisible = ref(false)
+
 const agentOptions = computed(() => agentStore.agentOptions)
 
 watch(() => workspaceStore.currentWorkspace, (ws) => {
@@ -158,6 +177,28 @@ function onAgentChange() {
 .workspace-select {
   width: 180px;
   font-size: var(--font-size-xs);
+}
+
+.ws-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0;
+}
+
+.ws-option-name {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+
+.ws-option-path {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .agent-select {

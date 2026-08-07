@@ -6,15 +6,22 @@
         <h1>{{ greetingTitle }}</h1>
       </div>
 
-      <ChatInput variant="landing" />
-
-      <div class="quick-actions" aria-label="快捷任务">
-        <button class="quick-chip" type="button"><i class="pi pi-pencil"></i> Write</button>
-        <button class="quick-chip" type="button"><i class="pi pi-graduation-cap"></i> Learn</button>
-        <button class="quick-chip" type="button"><i class="pi pi-code"></i> Code</button>
-        <button class="quick-chip" type="button"><i class="pi pi-briefcase"></i> Project</button>
-        <button class="quick-chip" type="button"><i class="pi pi-lightbulb"></i> Agent choice</button>
+      <!-- 无工作区：引导注册，不展示禁用的输入框和纯装饰 chip -->
+      <div v-if="!workspaceStore.hasWorkspace" class="onboarding-cta">
+        <p class="cta-desc">工作区是 Agent 读取、搜索和修改代码的根目录。注册一个本地项目目录即可开始。</p>
+        <Button
+          label="注册第一个工作区"
+          icon="pi pi-folder-plus"
+          size="large"
+          class="cta-btn"
+          @click="uiStore.openRegisterDialog()"
+        />
       </div>
+
+      <!-- 有工作区但无消息：展示输入框即可 -->
+      <template v-else>
+        <ChatInput variant="landing" />
+      </template>
     </div>
 
     <div v-else class="chat-messages" ref="messagesContainer" @scroll.passive="handleMessagesScroll">
@@ -35,8 +42,10 @@
 import { computed, ref, nextTick, watch } from 'vue'
 import MessageList from '@/components/chat/MessageList.vue'
 import ChatInput from '@/components/chat/ChatInput.vue'
+import Button from 'primevue/button'
 import { useChatStore } from '@/stores/chat'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { useUiStore } from '@/stores/ui'
 import { useAgentStore } from '@/stores/agent'
 import { useSse } from '@/composables/useSse'
 import { modelConfigApi } from '@/api/modelConfig'
@@ -48,6 +57,7 @@ defineEmits<{
 
 const chatStore = useChatStore()
 const workspaceStore = useWorkspaceStore()
+const uiStore = useUiStore()
 const agentStore = useAgentStore()
 const sse = useSse()
 const messagesContainer = ref<HTMLElement | null>(null)
@@ -287,31 +297,24 @@ function buildPlanKey(plan: PlanInfo): string {
   line-height: 1;
 }
 
-.quick-actions {
+.onboarding-cta {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 10px;
-  margin-top: 20px;
-}
-
-.quick-chip {
-  min-height: 40px;
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  background: var(--bg-panel);
-  color: var(--ink);
-  display: inline-flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 0 14px;
-  font-size: 1rem;
-  cursor: default;
-  box-shadow: var(--shadow-sm);
+  gap: var(--spacing-lg);
+  max-width: 520px;
 }
 
-.quick-chip i {
+.cta-desc {
+  margin: 0;
+  text-align: center;
   color: var(--text-secondary);
+  font-size: var(--font-size-base);
+  line-height: 1.6;
+}
+
+.cta-btn {
+  font-weight: 600;
 }
 
 .chat-messages {
@@ -329,11 +332,6 @@ function buildPlanKey(plan: PlanInfo): string {
   .greeting {
     gap: 12px;
     margin-bottom: 30px;
-  }
-
-  .quick-chip {
-    min-height: 36px;
-    font-size: var(--font-size-sm);
   }
 
   .landing-shell {

@@ -113,6 +113,7 @@ public class PlannerNode implements AgentNode {
                 5. steps 中的 status 固定为 pending。
                 6. tools 只能从 LS、Read、Grep、Glob、WebSearch、Edit、Write、apply_patch、Bash 中选择；计划阶段只是声明可能需要的工具。
                 7. 每个 step 尽量选择一个最匹配的可用 Agent；如果没有匹配项，再使用 ExecutorAgent。
+                8. 不要填写 modelName 和 modelConfigId，模型由系统根据 Agent 配置自动匹配。
 
                 JSON Schema：
                 {
@@ -128,8 +129,6 @@ public class PlannerNode implements AgentNode {
                       "agentId": 1,
                       "agentName": "前端专家",
                       "agentRole": "FRONTEND",
-                      "modelConfigId": 1,
-                      "modelName": "deepseek-chat",
                       "tools": ["Read", "Grep"]
                     }
                   ],
@@ -254,7 +253,7 @@ public class PlannerNode implements AgentNode {
             if (!StringUtils.hasText(step.getAgentName())) {
                 step.setAgentName("ExecutorAgent");
             }
-            applyAgentMetadata(step, availableAgents);
+            applyAgentMetadata(step, availableAgents, context);
             if (step.getTools() == null) {
                 step.setTools(List.of());
             }
@@ -302,7 +301,7 @@ public class PlannerNode implements AgentNode {
         return agentRepository.findByWorkspaceIdAndStatusOrderByCreatedAtDesc(context.getWorkspace().getId(), "ENABLED");
     }
 
-    private void applyAgentMetadata(AgentPlanStep step, List<AgentEntity> availableAgents) {
+    private void applyAgentMetadata(AgentPlanStep step, List<AgentEntity> availableAgents, RuntimeContext context) {
         AgentEntity selected = findByAgentId(step.getAgentId(), availableAgents);
         if (selected == null) {
             selected = findByAgentName(step.getAgentName(), availableAgents);
@@ -317,6 +316,9 @@ public class PlannerNode implements AgentNode {
             if (!StringUtils.hasText(step.getAgentRole())) {
                 step.setAgentRole("EXECUTOR");
             }
+            // 没有匹配 Agent 时，模型用当前运行模型兜底，覆盖 LLM 可能瞎编的模型名
+            step.setModelName(context.getModelName());
+            step.setModelConfigId(null);
             return;
         }
 
@@ -327,6 +329,10 @@ public class PlannerNode implements AgentNode {
         if (modelConfig != null) {
             step.setModelConfigId(modelConfig.getId());
             step.setModelName(modelConfig.getModelName());
+        } else {
+            // Agent 未绑定模型时，用当前运行模型兜底，避免显示错误模型名
+            step.setModelConfigId(null);
+            step.setModelName(context.getModelName());
         }
     }
 

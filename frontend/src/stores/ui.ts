@@ -6,6 +6,8 @@ export const useUiStore = defineStore('ui', () => {
   const rightPanelOpen = ref(false)
   const activeModal = ref<string | null>(null)
   const rightPanelTab = ref<'events' | 'timing'>('events')
+  // 注册工作区对话框的全局开关，TopBar 与 ChatPanel 空状态引导都会触发它
+  const registerDialogOpen = ref(false)
 
   function toggleLeftSidebar() {
     leftSidebarOpen.value = !leftSidebarOpen.value
@@ -27,6 +29,14 @@ export const useUiStore = defineStore('ui', () => {
     rightPanelTab.value = tab
   }
 
+  function openRegisterDialog() {
+    registerDialogOpen.value = true
+  }
+
+  function closeRegisterDialog() {
+    registerDialogOpen.value = false
+  }
+
   return {
     leftSidebarOpen,
     rightPanelOpen,
@@ -37,5 +47,8 @@ export const useUiStore = defineStore('ui', () => {
     openModal,
     closeModal,
     setRightPanelTab,
+    registerDialogOpen,
+    openRegisterDialog,
+    closeRegisterDialog,
   }
 })

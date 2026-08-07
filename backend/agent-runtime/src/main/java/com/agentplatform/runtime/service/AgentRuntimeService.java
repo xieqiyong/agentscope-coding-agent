@@ -3,11 +3,13 @@ package com.agentplatform.runtime.service;
 import com.agentplatform.common.exception.BusinessException;
 import com.agentplatform.memory.model.MemoryCaptureResult;
 import com.agentplatform.memory.service.MemoryCaptureService;
+import com.agentplatform.persistence.entity.AgentPlanStateEntity;
 import com.agentplatform.persistence.entity.AgentRunEntity;
 import com.agentplatform.persistence.entity.ApprovalRequestEntity;
 import com.agentplatform.persistence.entity.ConversationEntity;
 import com.agentplatform.persistence.entity.ConversationMessageEntity;
 import com.agentplatform.persistence.enums.AgentRunStatus;
+import com.agentplatform.persistence.repository.AgentPlanStateRepository;
 import com.agentplatform.persistence.repository.AgentRunRepository;
 import com.agentplatform.persistence.repository.ConversationMessageRepository;
 import com.agentplatform.persistence.repository.ConversationRepository;
@@ -33,6 +35,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeoutException;
@@ -93,6 +96,9 @@ public class AgentRuntimeService {
 
     @Resource
     private AgentRunCancellationService cancellationService;
+
+    @Resource
+    private AgentPlanStateRepository agentPlanStateRepository;
 
     public AgentRunResult executeStreaming(AgentRunCommand command, RuntimeEventSink clientSink) {
         validateCommand(command);
@@ -168,6 +174,34 @@ public class AgentRuntimeService {
                                 "memoryConflicts", memoryCaptureResult.conflicts(),
                                 "conversationId", conversation.getId(),
                                 "runMode", "PLAN_EXECUTE"
+                        ), elapsedMs(started));
+                result.setStatus("COMPLETED");
+                return result;
+            }
+
+            // 续接检测：消息表达"继续"且本会话有被中断的 plan，则从断点续接执行
+            AgentPlanStateEntity interruptedPlan = findInterruptedPlan(command);
+            if (interruptedPlan != null && isResumeIntent(command)) {
+                AgentRunResult result = multiAgentOrchestrator.resumePlanAndExecute(context, persistedSink, interruptedPlan);
+                if (AgentRunStatus.WAITING_APPROVAL.name().equals(result.getStatus())) {
+                    return result;
+                }
+                cancellationService.assertNotCancelled(run.getId());
+                saveAssistantMessage(conversation.getId(), result.getAnswer());
+                MemoryCaptureResult memoryCaptureResult = captureMemory(command, conversation.getId(), userMessage.getId(), result.getAnswer());
+                lifecycleService.completeRun(run.getId(), result);
+                emit(persistedSink, run.getId(), traceId, RuntimeEventType.RUN_FINISHED, "运行完成",
+                        "已从中断点续接完成计划执行", Map.of(
+                                "status", AgentRunStatus.COMPLETED.name(),
+                                "inputTokens", result.getInputTokens(),
+                                "outputTokens", result.getOutputTokens(),
+                                "modelCallCount", result.getModelCallCount(),
+                                "memoryCaptured", memoryCaptureResult.captured(),
+                                "memoryActivated", memoryCaptureResult.activated(),
+                                "memoryPending", memoryCaptureResult.pending(),
+                                "memoryConflicts", memoryCaptureResult.conflicts(),
+                                "conversationId", conversation.getId(),
+                                "runMode", "RESUME_PLAN"
                         ), elapsedMs(started));
                 result.setStatus("COMPLETED");
                 return result;
@@ -478,6 +512,26 @@ public class AgentRuntimeService {
 
     private boolean isAuto(AgentRunCommand command) {
         return "AUTO".equalsIgnoreCase(command.getRunMode());
+    }
+
+    /**
+     * 查找本会话被中断、可续接的 plan 状态。
+     */
+    private AgentPlanStateEntity findInterruptedPlan(AgentRunCommand command) {
+        if (command.getConversationId() == null) {
+            return null;
+        }
+        return agentPlanStateRepository.findFirstByConversationIdAndStatusIn(
+                command.getConversationId(), List.of("INTERRUPTED")).orElse(null);
+    }
+
+    /**
+     * 判断用户消息是否表达"继续上次任务"的意图（用于触发 plan 续接）。
+     */
+    private boolean isResumeIntent(AgentRunCommand command) {
+        String message = command.getMessage() == null ? "" : command.getMessage().trim().toLowerCase();
+        return message.contains("继续") || message.contains("接着")
+                || message.contains("continue") || message.contains("resume");
     }
 
     private void validateApprovalCommand(AgentApprovalCommand command) {

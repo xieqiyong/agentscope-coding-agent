@@ -1,63 +1,30 @@
 <template>
-  <div class="plan-card">
-    <div class="plan-header">
-      <div class="plan-title-row">
-        <i class="pi pi-list-check" style="font-size: 0.78rem;"></i>
-        <span class="plan-title">{{ plan.title }}</span>
-      </div>
+  <div class="plan-todo">
+    <div class="plan-todo-header">
+      <i class="pi pi-list-check" style="font-size: 0.72rem;"></i>
+      <span class="plan-todo-title">{{ plan.title }}</span>
       <span :class="['risk-badge', plan.riskLevel.toLowerCase()]">{{ plan.riskLevel }}</span>
     </div>
 
-    <p v-if="plan.summary" class="plan-summary">{{ plan.summary }}</p>
-
-    <div class="plan-steps">
-      <div v-for="step in plan.steps" :key="step.id" class="plan-step">
-        <span :class="['step-icon', step.status]">
-          <i :class="stepIcon(step.status)" style="font-size: 0.66rem;"></i>
-        </span>
-        <div class="step-body">
-          <div class="step-title">
-            <span class="step-index">{{ step.id }}</span>
-            <span>{{ step.title }}</span>
-          </div>
-          <div v-if="step.description" class="step-desc">{{ step.description }}</div>
-          <div class="step-meta">
-            <span v-if="step.agentName" class="agent-pill">
-              <i class="pi pi-sitemap" style="font-size: 0.62rem;"></i>
-              {{ step.agentName }}
-            </span>
-            <span v-if="step.agentRole" class="agent-pill muted">
-              <i class="pi pi-share-alt" style="font-size: 0.62rem;"></i>
-              {{ step.agentRole }}
-            </span>
-            <span v-if="step.modelName" class="agent-pill muted">
-              <i class="pi pi-server" style="font-size: 0.62rem;"></i>
-              {{ step.modelName }}
-            </span>
-          </div>
-          <div v-if="step.tools?.length" class="step-tools">
-            <span v-for="tool in step.tools" :key="tool" class="tool-pill">{{ tool }}</span>
-          </div>
-        </div>
+    <!-- 步骤：每行 状态图标 + 步骤名 + 智能体 + 模型；完成的步骤划横线 -->
+    <div class="plan-todo-steps">
+      <div
+        v-for="step in plan.steps"
+        :key="step.id"
+        :class="['plan-todo-step', step.status]"
+      >
+        <span class="step-icon"><i :class="stepIcon(step.status)" style="font-size: 0.66rem;"></i></span>
+        <span :class="['step-title', { completed: step.status === 'completed' }]">{{ step.title }}</span>
+        <span v-if="step.agentName" class="agent-pill">{{ step.agentName }}</span>
+        <span v-if="step.modelName" class="agent-pill muted">{{ step.modelName }}</span>
       </div>
     </div>
 
-    <div v-if="plan.acceptanceCriteria.length" class="criteria">
-      <span class="criteria-label">完成标准</span>
-      <ul>
-        <li v-for="item in plan.acceptanceCriteria" :key="item">{{ item }}</li>
-      </ul>
-    </div>
-
-    <div class="plan-actions">
-      <button
-        class="execute-btn"
-        type="button"
-        :disabled="disabled || executing || allCompleted"
-        @click="$emit('execute', plan)"
-      >
-        <i :class="['pi', buttonIcon]" style="font-size: 0.7rem;"></i>
-        <span>{{ buttonText }}</span>
+    <!-- 执行按钮：仅 /plan（待执行、未在跑）才显示；普通任务自动执行时不显示 -->
+    <div v-if="!disabled && isIdle" class="plan-todo-actions">
+      <button class="execute-btn" type="button" @click="$emit('execute', plan)">
+        <i class="pi pi-play" style="font-size: 0.7rem;"></i>
+        <span>执行计划</span>
       </button>
     </div>
   </div>
@@ -76,36 +43,14 @@ defineEmits<{
   execute: [plan: PlanInfo]
 }>()
 
-const allCompleted = computed(() =>
-  props.plan.executionStatus === 'completed'
-  || (props.plan.steps.length > 0 && props.plan.steps.every((step) => step.status === 'completed')),
-)
-
-const executing = computed(() =>
-  props.plan.executionStatus === 'running'
-  || props.plan.steps.some((step) => step.status === 'in_progress'),
-)
-
-const buttonText = computed(() => {
-  if (allCompleted.value) return '已执行'
-  if (executing.value) return '执行中'
-  if (props.plan.executionStatus === 'failed') return '重新执行'
-  if (props.plan.executionStatus === 'cancelled') return '继续执行'
-  return '执行计划'
-})
-
-const buttonIcon = computed(() => {
-  if (allCompleted.value) return 'pi-check'
-  if (executing.value) return 'pi-spin pi-spinner'
-  if (props.plan.executionStatus === 'failed') return 'pi-refresh'
-  if (props.plan.executionStatus === 'cancelled') return 'pi-refresh'
-  return 'pi-play'
-})
+// 仅"待执行"（/plan 生成完、未在跑）才显示执行按钮。
+// 普通任务走 PLAN_EXECUTE，整轮 isStreaming=true → disabled=true → 按钮不显示，agent 自动跑。
+const isIdle = computed(() => !props.plan.executionStatus || props.plan.executionStatus === 'idle')
 
 function stepIcon(status: PlanStep['status']): string {
   const icons: Record<PlanStep['status'], string> = {
     pending: 'pi pi-circle',
-    in_progress: 'pi pi-spin pi-spinner',
+    in_progress: 'pi-spin pi-spinner',
     completed: 'pi pi-check',
     failed: 'pi pi-times',
     cancelled: 'pi pi-stop',
@@ -115,32 +60,27 @@ function stepIcon(status: PlanStep['status']): string {
 </script>
 
 <style scoped>
-.plan-card {
+/* 内联 todo：左侧 accent 边框 + 淡底，紧凑融入聊天流，不再是大卡片框 */
+.plan-todo {
   width: min(100%, 760px);
-  border: 1px solid var(--border-color);
+  margin: var(--spacing-sm) 0;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-left: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--bg-hover) 50%, transparent);
   border-radius: var(--radius-sm);
-  background: var(--bg-panel);
-  padding: var(--spacing-md);
-  margin-bottom: var(--spacing-sm);
 }
 
-.plan-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-md);
-  margin-bottom: var(--spacing-sm);
-}
-
-.plan-title-row {
-  min-width: 0;
+.plan-todo-header {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-xs);
 }
 
-.plan-title {
-  font-size: var(--font-size-base);
+.plan-todo-title {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--text-primary);
   overflow: hidden;
@@ -150,158 +90,96 @@ function stepIcon(status: PlanStep['status']): string {
 
 .risk-badge {
   flex-shrink: 0;
-  font-size: 0.62rem;
+  font-size: 0.6rem;
   font-weight: 700;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-color);
-  padding: 2px 6px;
+  padding: 1px 5px;
   color: var(--text-secondary);
 }
-
 .risk-badge.high,
 .risk-badge.critical {
   color: var(--danger);
   border-color: var(--danger);
 }
-
 .risk-badge.medium {
   color: var(--warning);
   border-color: var(--warning);
 }
-
 .risk-badge.low {
   color: var(--success);
   border-color: var(--success);
 }
 
-.plan-summary {
-  color: var(--text-secondary);
-  font-size: var(--font-size-sm);
-  margin: 0 0 var(--spacing-md);
-}
-
-.plan-steps {
+.plan-todo-steps {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-sm);
 }
 
-.plan-step {
+.plan-todo-step {
   display: flex;
+  align-items: center;
   gap: var(--spacing-sm);
+  padding: 3px 0;
+  font-size: var(--font-size-xs);
+  min-width: 0;
 }
 
 .step-icon {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
-  margin-top: 2px;
 }
-
-.step-icon.completed { color: var(--success); }
-.step-icon.failed { color: var(--danger); }
-.step-icon.cancelled { color: var(--warning); }
-.step-icon.in_progress { color: var(--accent); }
-
-.step-body {
-  min-width: 0;
-  flex: 1;
+.plan-todo-step.completed .step-icon {
+  color: var(--success);
+}
+.plan-todo-step.in_progress .step-icon {
+  color: var(--accent);
+}
+.plan-todo-step.failed .step-icon {
+  color: var(--danger);
 }
 
 .step-title {
-  display: flex;
-  gap: 6px;
+  flex: 1;
+  min-width: 0;
   color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.step-index {
+/* 执行完的步骤：划横线 + 变灰 */
+.step-title.completed {
+  text-decoration: line-through;
   color: var(--text-muted);
-  font-family: var(--font-mono);
-}
-
-.step-desc {
-  color: var(--text-secondary);
-  font-size: var(--font-size-xs);
-  line-height: 1.5;
-  margin-top: 2px;
-}
-
-.step-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin-top: 6px;
 }
 
 .agent-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  max-width: 100%;
+  flex-shrink: 0;
   border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border-color));
   border-radius: var(--radius-sm);
-  padding: 2px 6px;
+  padding: 1px 6px;
   color: var(--accent-hover);
   background: color-mix(in srgb, var(--accent-soft) 42%, transparent);
-  font-size: 0.66rem;
+  font-size: 0.62rem;
   font-weight: 600;
 }
-
 .agent-pill.muted {
   color: var(--text-muted);
   border-color: var(--border-color);
   background: var(--bg-main);
 }
 
-.step-tools {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 5px;
-}
-
-.tool-pill {
-  font-family: var(--font-mono);
-  font-size: 0.62rem;
-  color: var(--text-muted);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  padding: 1px 5px;
-}
-
-.criteria {
-  margin-top: var(--spacing-md);
-  border-top: 1px solid var(--border-color);
-  padding-top: var(--spacing-sm);
-}
-
-.criteria-label {
-  display: block;
-  color: var(--text-muted);
-  font-size: 0.62rem;
-  font-weight: 700;
-  margin-bottom: 4px;
-}
-
-.criteria ul {
-  margin: 0;
-  padding-left: 1.1rem;
-  color: var(--text-secondary);
-  font-size: var(--font-size-xs);
-}
-
-.plan-actions {
+.plan-todo-actions {
   display: flex;
   justify-content: flex-end;
-  margin-top: var(--spacing-md);
-  border-top: 1px solid var(--border-color);
-  padding-top: var(--spacing-sm);
+  margin-top: var(--spacing-xs);
 }
 
 .execute-btn {
@@ -314,18 +192,13 @@ function stepIcon(status: PlanStep['status']): string {
   color: #fff;
   font-size: var(--font-size-xs);
   font-weight: 600;
-  padding: 6px 10px;
+  padding: 4px 12px;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+  transition: background 0.15s, border-color 0.15s;
 }
 
-.execute-btn:hover:not(:disabled) {
+.execute-btn:hover {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
-}
-
-.execute-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
 }
 </style>
