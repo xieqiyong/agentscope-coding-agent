@@ -101,12 +101,22 @@ export const useChatStore = defineStore('chat', () => {
   function handleRuntimeEvent(type: RuntimeEventType, event: RuntimeEvent) {
     switch (type) {
       case 'RUN_STARTED':
-      case 'AGENT_STARTED':
         rememberConversationFromEvent(event)
         rememberActiveRun(event)
         isStreaming.value = true
         streamingText.value = ''
         break
+
+      case 'AGENT_STARTED': {
+        const nodeId = eventTaskNodeId(event)
+        if (nodeId) {
+          const step = findPlanStep(nodeId)
+          if (step) step.activity = '执行中'
+          break
+        }
+        isStreaming.value = true
+        break
+      }
 
       case 'ANSWER_DELTA':
         handleAnswerDelta(event)
@@ -167,6 +177,14 @@ export const useChatStore = defineStore('chat', () => {
         handlePlanStepStatusChanged(event)
         break
 
+      case 'TASK_GRAPH_STARTED':
+        handleTaskGraphStarted(event)
+        break
+
+      case 'TASK_GRAPH_FINISHED':
+        handleTaskGraphFinished(event)
+        break
+
       case 'CONFIRMATION_REQUIRED':
         handleConfirmationRequired(event)
         break
@@ -175,8 +193,18 @@ export const useChatStore = defineStore('chat', () => {
         handleRunStatusChanged(event)
         break
 
+      case 'AGENT_FINISHED': {
+        const nodeId = eventTaskNodeId(event)
+        if (nodeId) {
+          const step = findPlanStep(nodeId)
+          if (step && step.status === 'in_progress') step.activity = '正在收尾'
+          break
+        }
+        finalizeStreamingMessage()
+        break
+      }
+
       case 'RUN_FINISHED':
-      case 'AGENT_FINISHED':
         rememberConversationFromEvent(event)
         if (readString(event.metadata?.status).toUpperCase() === 'CANCELLED') {
           markRunningPlanCancelled()
@@ -205,6 +233,11 @@ export const useChatStore = defineStore('chat', () => {
         break
 
       case 'RUNTIME_WARNING':
+        if (eventTaskNodeId(event)) {
+          const step = findPlanStep(eventTaskNodeId(event))
+          if (step) step.activity = event.content || '节点警告'
+          break
+        }
         if (event.content) {
           messages.value.push({
             id: `warn-${Date.now()}`,
@@ -220,6 +253,15 @@ export const useChatStore = defineStore('chat', () => {
 
   function handleAnswerDelta(event: RuntimeEvent) {
     const delta = event.content || ''
+    const nodeId = eventTaskNodeId(event)
+    if (nodeId) {
+      const step = findPlanStep(nodeId)
+      if (step) {
+        step.output = `${step.output || ''}${delta}`
+        step.activity = '正在生成结果'
+      }
+      return
+    }
     streamingText.value += delta
 
     const lastMsg = messages.value[messages.value.length - 1]
@@ -258,7 +300,13 @@ export const useChatStore = defineStore('chat', () => {
     streamingText.value = ''
   }
 
-  function handleModelThinkingStarted(_event: RuntimeEvent) {
+  function handleModelThinkingStarted(event: RuntimeEvent) {
+    const nodeId = eventTaskNodeId(event)
+    if (nodeId) {
+      const step = findPlanStep(nodeId)
+      if (step) step.activity = '思考中'
+      return
+    }
     isStreaming.value = true
     const message = ensureAssistantRuntimeMessage()
     if (!message.thinking || message.thinking.status === 'done') {
@@ -274,6 +322,12 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function handleModelThinkingFinished(event: RuntimeEvent) {
+    const nodeId = eventTaskNodeId(event)
+    if (nodeId) {
+      const step = findPlanStep(nodeId)
+      if (step && step.status === 'in_progress') step.activity = '执行中'
+      return
+    }
     const lastMsg = messages.value[messages.value.length - 1]
     if (lastMsg?.role === 'assistant' && lastMsg.thinking?.status === 'thinking') {
       handleThinkingFinished(event)
@@ -281,6 +335,12 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function handleThinkingStarted(event: RuntimeEvent) {
+    const nodeId = eventTaskNodeId(event)
+    if (nodeId) {
+      const step = findPlanStep(nodeId)
+      if (step) step.activity = '思考中'
+      return
+    }
     isStreaming.value = true
     const message = ensureAssistantRuntimeMessage()
     message.isStreaming = true
@@ -299,6 +359,12 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function handleThinkingDelta(event: RuntimeEvent) {
+    const nodeId = eventTaskNodeId(event)
+    if (nodeId) {
+      const step = findPlanStep(nodeId)
+      if (step) step.activity = '思考中'
+      return
+    }
     const message = ensureAssistantRuntimeMessage()
     const thinking = ensureThinkingInfo(message)
     const meta = event.metadata || {}
@@ -316,7 +382,13 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  function handleThinkingFinished(_event: RuntimeEvent) {
+  function handleThinkingFinished(event: RuntimeEvent) {
+    const nodeId = eventTaskNodeId(event)
+    if (nodeId) {
+      const step = findPlanStep(nodeId)
+      if (step && step.status === 'in_progress') step.activity = '执行中'
+      return
+    }
     const message = ensureAssistantRuntimeMessage()
     const thinking = ensureThinkingInfo(message)
     thinking.status = 'done'
@@ -341,8 +413,11 @@ export const useChatStore = defineStore('chat', () => {
 
   function handleToolCallStarted(event: RuntimeEvent) {
     const meta = event.metadata || {}
-    const callId = readString(meta.callId) || readString(meta.toolCallId) || event.eventId
+    const callId = eventCallId(event, event.eventId)
     const toolName = readString(meta.toolName) || readString(meta.tool) || event.stage || '未知工具'
+    const taskNodeId = eventTaskNodeId(event)
+    const nodeStep = taskNodeId ? findPlanStep(taskNodeId) : undefined
+    if (nodeStep) nodeStep.activity = `调用 ${toolName}`
     const lastMsg = ensureAssistantToolMessage()
     const existing = findToolCall(callId)
     if (existing) {
@@ -359,12 +434,14 @@ export const useChatStore = defineStore('chat', () => {
       argsText: '',
       status: 'running',
       startedAt: Date.now(),
+      taskNodeId: taskNodeId || undefined,
+      agentName: readString(meta.agentName) || nodeStep?.agentName,
     })
   }
 
   function handleToolCallArgsDelta(event: RuntimeEvent) {
     const meta = event.metadata || {}
-    const callId = readString(meta.callId) || readString(meta.toolCallId)
+    const callId = eventCallId(event)
     const toolCall = findToolCall(callId)
     if (!toolCall) return
 
@@ -374,13 +451,14 @@ export const useChatStore = defineStore('chat', () => {
 
   function handleToolResultStarted(event: RuntimeEvent) {
     const meta = event.metadata || {}
-    const callId = readString(meta.callId) || readString(meta.toolCallId) || event.eventId
+    const callId = eventCallId(event, event.eventId)
     const toolName = readString(meta.toolName) || readString(meta.tool) || event.stage || '未知工具'
+    const taskNodeId = eventTaskNodeId(event)
     let toolCall = findToolCall(callId)
 
     // 兜底：callId 不匹配时按工具名找
     if (!toolCall) {
-      toolCall = findRunningToolCallByName(toolName)
+      toolCall = findRunningToolCallByName(toolName, taskNodeId)
     }
     if (!toolCall) {
       const lastMsg = ensureAssistantToolMessage()
@@ -393,6 +471,8 @@ export const useChatStore = defineStore('chat', () => {
         result: '',
         status: 'running',
         startedAt: Date.now(),
+        taskNodeId: taskNodeId || undefined,
+        agentName: readString(meta.agentName),
       }
       lastMsg.toolCalls.push(toolCall)
     }
@@ -401,13 +481,14 @@ export const useChatStore = defineStore('chat', () => {
 
   function handleToolResultDelta(event: RuntimeEvent) {
     const meta = event.metadata || {}
-    const callId = readString(meta.callId) || readString(meta.toolCallId)
+    const callId = eventCallId(event)
+    const taskNodeId = eventTaskNodeId(event)
     let toolCall = findToolCall(callId)
 
     // 兜底：如果 callId 不匹配，尝试找最近消息中正在运行的 toolCall
     if (!toolCall) {
       const toolName = readString(meta.toolName) || readString(meta.tool)
-      toolCall = findRunningToolCallByName(toolName)
+      toolCall = findRunningToolCallByName(toolName, taskNodeId)
     }
     if (!toolCall) return
 
@@ -416,13 +497,14 @@ export const useChatStore = defineStore('chat', () => {
 
   function handleToolResultFinished(event: RuntimeEvent) {
     const meta = event.metadata || {}
-    const callId = readString(meta.callId) || readString(meta.toolCallId)
+    const callId = eventCallId(event)
+    const taskNodeId = eventTaskNodeId(event)
     let toolCall = findToolCall(callId)
 
     // 兜底：callId 不匹配时按工具名找最近完成的 toolCall
     if (!toolCall) {
       const toolName = readString(meta.toolName) || readString(meta.tool)
-      toolCall = findRunningToolCallByName(toolName)
+      toolCall = findRunningToolCallByName(toolName, taskNodeId)
     }
 
     if (!toolCall) {
@@ -433,6 +515,10 @@ export const useChatStore = defineStore('chat', () => {
     const state = readString(meta.state).toUpperCase()
     toolCall.status = ['ERROR', 'FAILED', 'TIMEOUT', 'REJECTED'].includes(state) ? 'error' : 'completed'
     toolCall.durationMs = event.elapsedMs || (Date.now() - (toolCall.startedAt || Date.now()))
+    if (taskNodeId) {
+      const step = findPlanStep(taskNodeId)
+      if (step && step.status === 'in_progress') step.activity = '执行中'
+    }
 
     if (isPatchProposalTool(toolCall.toolName)) {
       console.log('[ChatStore] 检测到 patch 提案工具:', toolCall.toolName, 'result=', toolCall.result)
@@ -466,15 +552,52 @@ export const useChatStore = defineStore('chat', () => {
       step.agentRole = readString(event.metadata?.agentRole) || step.agentRole
       step.modelConfigId = readString(event.metadata?.modelConfigId) || step.modelConfigId
       step.modelName = readString(event.metadata?.modelName) || step.modelName
+      step.dependsOn = readStringList(event.metadata?.dependsOn).length > 0
+        ? readStringList(event.metadata?.dependsOn)
+        : step.dependsOn
+      step.attempt = readNumber(event.metadata?.attempt) || step.attempt
+      const output = readString(event.metadata?.output)
+      if (output || status === 'completed') step.output = output
+      step.errorMessage = readString(event.metadata?.errorMessage) || undefined
+      step.startedAt = readString(event.metadata?.startedAt) || step.startedAt
+      step.finishedAt = readString(event.metadata?.finishedAt) || step.finishedAt
+      step.activity = status === 'in_progress'
+        ? (event.content || '执行中')
+        : status === 'waiting'
+          ? '等待继续'
+          : undefined
       if (message?.plan) {
         refreshPlanExecutionStatus(message.plan)
       }
     }
   }
 
+  function handleTaskGraphStarted(event: RuntimeEvent) {
+    isStreaming.value = true
+    const message = findLatestPlanMessage()
+    if (message?.plan) {
+      message.plan.executionStatus = 'running'
+      message.plan.maxConcurrency = readNumber(event.metadata?.maxConcurrency)
+        || message.plan.maxConcurrency
+    }
+  }
+
+  function handleTaskGraphFinished(event: RuntimeEvent) {
+    const message = findLatestPlanMessage()
+    if (!message?.plan) return
+    const status = readString(event.metadata?.status).toUpperCase()
+    if (status === 'COMPLETED') message.plan.executionStatus = 'completed'
+    else if (status === 'WAITING_APPROVAL') message.plan.executionStatus = 'waiting'
+    else if (status === 'FAILED') message.plan.executionStatus = 'failed'
+  }
+
   function refreshPlanExecutionStatus(plan: PlanInfo) {
     if (plan.steps.some((step) => step.status === 'in_progress')) {
       plan.executionStatus = 'running'
+      return
+    }
+    if (plan.steps.some((step) => step.status === 'waiting')) {
+      plan.executionStatus = 'waiting'
       return
     }
     if (plan.steps.length > 0 && plan.steps.every((step) => step.status === 'completed')) {
@@ -546,14 +669,15 @@ export const useChatStore = defineStore('chat', () => {
    * 兜底查找：当 callId 不匹配时，按工具名找最近一个正在运行的 toolCall。
    * 解决 AgentScope 不传 toolCallId 时每个事件 eventId 不同导致匹配失败的问题。
    */
-  function findRunningToolCallByName(toolName?: string): ToolCallInfo | null {
+  function findRunningToolCallByName(toolName?: string, taskNodeId?: string): ToolCallInfo | null {
     if (!toolName) return null
     for (let i = messages.value.length - 1; i >= 0; i--) {
       const msg = messages.value[i]
       if (!msg.toolCalls) continue
       for (let j = msg.toolCalls.length - 1; j >= 0; j--) {
         const tc = msg.toolCalls[j]
-        if (tc.status === 'running' && tc.toolName === toolName) return tc
+        if (tc.status === 'running' && tc.toolName === toolName
+          && (!taskNodeId || tc.taskNodeId === taskNodeId)) return tc
       }
     }
     return null
@@ -563,6 +687,22 @@ export const useChatStore = defineStore('chat', () => {
     if (typeof value === 'string') return value
     if (typeof value === 'number' && Number.isFinite(value)) return String(value)
     return ''
+  }
+
+  function eventTaskNodeId(event: RuntimeEvent): string {
+    return readString(event.metadata?.taskNodeId) || readString(event.metadata?.stepId)
+  }
+
+  function eventCallId(event: RuntimeEvent, fallback = ''): string {
+    const rawCallId = readString(event.metadata?.callId)
+      || readString(event.metadata?.toolCallId)
+      || fallback
+    const nodeId = eventTaskNodeId(event)
+    return nodeId && rawCallId ? `${nodeId}:${rawCallId}` : rawCallId
+  }
+
+  function findPlanStep(nodeId: string): PlanStep | undefined {
+    return findLatestPlanMessage()?.plan?.steps.find((step) => String(step.id) === nodeId)
   }
 
   function readNumber(value: unknown): number {
@@ -583,6 +723,8 @@ export const useChatStore = defineStore('chat', () => {
       : []
 
     return {
+      graphVersion: readNumber(raw.graphVersion) || 1,
+      maxConcurrency: readNumber(raw.maxConcurrency) || 1,
       title: readString(raw.title) || '执行计划',
       summary: readString(raw.summary),
       riskLevel: readRiskLevel(raw.riskLevel),
@@ -609,12 +751,19 @@ export const useChatStore = defineStore('chat', () => {
       modelConfigId: readString(raw.modelConfigId) || undefined,
       modelName: readString(raw.modelName) || readString(raw.model),
       tools: readStringList(raw.tools),
+      dependsOn: readStringList(raw.dependsOn),
+      attempt: readNumber(raw.attempt) || undefined,
+      output: readString(raw.output) || undefined,
+      errorMessage: readString(raw.errorMessage) || undefined,
+      startedAt: readString(raw.startedAt) || undefined,
+      finishedAt: readString(raw.finishedAt) || undefined,
     }
   }
 
   function normalizePlanStepStatus(value: unknown): PlanStep['status'] | '' {
     const text = readString(value).toLowerCase()
-    if (text === 'pending' || text === 'in_progress' || text === 'completed' || text === 'failed' || text === 'cancelled') {
+    if (text === 'pending' || text === 'ready' || text === 'in_progress' || text === 'completed'
+      || text === 'failed' || text === 'waiting' || text === 'cancelled') {
       return text
     }
     return ''
@@ -622,7 +771,8 @@ export const useChatStore = defineStore('chat', () => {
 
   function normalizePlanExecutionStatus(value: unknown): PlanInfo['executionStatus'] {
     const text = readString(value).toLowerCase()
-    if (text === 'idle' || text === 'running' || text === 'completed' || text === 'failed' || text === 'cancelled') {
+    if (text === 'idle' || text === 'running' || text === 'waiting' || text === 'completed'
+      || text === 'failed' || text === 'cancelled') {
       return text
     }
     return undefined
@@ -894,9 +1044,11 @@ export const useChatStore = defineStore('chat', () => {
   function markRunningPlanFailed() {
     const message = findLatestPlanMessage()
     if (!message?.plan || message.plan.executionStatus !== 'running') return
-    const runningStep = message.plan.steps.find((step) => step.status === 'in_progress')
-    if (runningStep) {
-      runningStep.status = 'failed'
+    for (const step of message.plan.steps) {
+      if (step.status === 'in_progress' || step.status === 'ready') {
+        step.status = 'failed'
+        step.activity = undefined
+      }
     }
     refreshPlanExecutionStatus(message.plan)
   }
@@ -904,9 +1056,11 @@ export const useChatStore = defineStore('chat', () => {
   function markRunningPlanCancelled() {
     const message = findLatestPlanMessage()
     if (!message?.plan || message.plan.executionStatus !== 'running') return
-    const runningStep = message.plan.steps.find((step) => step.status === 'in_progress')
-    if (runningStep) {
-      runningStep.status = 'cancelled'
+    for (const step of message.plan.steps) {
+      if (step.status === 'in_progress' || step.status === 'ready') {
+        step.status = 'cancelled'
+        step.activity = undefined
+      }
     }
     message.plan.executionStatus = 'cancelled'
   }
@@ -1003,6 +1157,8 @@ export const useChatStore = defineStore('chat', () => {
       startedAt: typeof item.startedAt === 'number' ? item.startedAt : undefined,
       durationMs: typeof item.durationMs === 'number' ? item.durationMs : undefined,
       patchId: typeof item.patchId === 'string' ? item.patchId : undefined,
+      taskNodeId: typeof item.taskNodeId === 'string' ? item.taskNodeId : undefined,
+      agentName: typeof item.agentName === 'string' ? item.agentName : undefined,
     }))
   }
 

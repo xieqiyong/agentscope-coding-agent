@@ -2,6 +2,7 @@
   <div :class="['tool-call-card', toolCall.status]">
     <div class="tool-header" @click="expanded = !expanded">
       <i :class="toolIcon" style="font-size: 0.7rem;"></i>
+      <span v-if="toolCall.agentName" class="tool-agent">{{ toolCall.agentName }}</span>
       <span class="tool-name">{{ toolSignature }}</span>
       <span :class="['tool-status', toolCall.status]">{{ statusLabel }}</span>
       <span v-if="toolCall.durationMs" class="tool-duration">{{ toolCall.durationMs }}ms</span>
@@ -214,6 +215,17 @@ function isCommandTool(toolName: string): boolean {
   white-space: nowrap;
   font-weight: 500;
   color: var(--text-primary);
+}
+
+.tool-agent {
+  max-width: 120px;
+  flex-shrink: 0;
+  overflow: hidden;
+  color: var(--accent-hover);
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tool-status {

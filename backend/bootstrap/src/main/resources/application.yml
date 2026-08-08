@@ -30,6 +30,11 @@ server:
 
 agent:
   runtime:
+    multi-agent:
+      # 单张任务图的并行节点上限；所有任务图共享一个有界工作线程池。
+      max-concurrency: 4
+      worker-threads: 16
+      queue-capacity: 128
     session:
       # AgentScope 内部 AgentState 存储。数据库仍然保存页面会话、消息和事件审计。
       enabled: true

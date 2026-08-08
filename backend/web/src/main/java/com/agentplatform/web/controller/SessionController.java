@@ -269,6 +269,12 @@ public class SessionController {
                     copyIfPresent(status, step, "agentRole");
                     copyIfPresent(status, step, "modelConfigId");
                     copyIfPresent(status, step, "modelName");
+                    copyIfPresent(status, step, "dependsOn");
+                    copyIfPresent(status, step, "attempt");
+                    copyIfPresent(status, step, "output");
+                    copyIfPresent(status, step, "errorMessage");
+                    copyIfPresent(status, step, "startedAt");
+                    copyIfPresent(status, step, "finishedAt");
                 }
             }
         }
@@ -307,6 +313,12 @@ public class SessionController {
             status.put("modelConfigId", metadata.get("modelConfigId"));
             status.put("modelName", firstString(metadata.get("modelName")));
             status.put("stepTitle", firstString(metadata.get("stepTitle")));
+            status.put("dependsOn", metadata.get("dependsOn"));
+            status.put("attempt", metadata.get("attempt"));
+            status.put("output", firstString(metadata.get("output")));
+            status.put("errorMessage", firstString(metadata.get("errorMessage")));
+            status.put("startedAt", firstString(metadata.get("startedAt")));
+            status.put("finishedAt", firstString(metadata.get("finishedAt")));
             statuses.add(status);
         }
         return statuses;
@@ -320,28 +332,35 @@ public class SessionController {
         for (AgentEventEntity event : events) {
             String type = event.getEventType();
             Map<String, Object> metadata = parseMetadata(event.getMetadataJson());
-            String callId = firstString(metadata.get("callId"), metadata.get("toolCallId"), event.getId());
+            String taskNodeId = firstString(metadata.get("taskNodeId"), metadata.get("stepId"));
+            String rawCallId = firstString(metadata.get("callId"), metadata.get("toolCallId"), event.getId());
+            String callId = StringUtils.hasText(taskNodeId) ? taskNodeId + ":" + rawCallId : rawCallId;
             String toolName = firstString(metadata.get("toolName"), metadata.get("tool"), event.getStage());
 
             if ("TOOL_CALL_STARTED".equals(type)) {
                 Map<String, Object> toolCall = findOrCreateToolCall(toolCalls, byCallId, callId, toolName);
+                attachToolNodeMetadata(toolCall, metadata, taskNodeId);
                 toolCall.put("status", "running");
                 toolCall.put("startedAt", toEpochMs(event.getCreatedAt()));
             } else if ("TOOL_CALL_ARGS_DELTA".equals(type)) {
                 Map<String, Object> toolCall = findOrCreateToolCall(toolCalls, byCallId, callId, toolName);
+                attachToolNodeMetadata(toolCall, metadata, taskNodeId);
                 String argsText = String.valueOf(toolCall.getOrDefault("argsText", ""));
                 argsText = argsText + safe(event.getContent());
                 toolCall.put("argsText", argsText);
                 toolCall.put("args", parseArgs(argsText));
             } else if ("TOOL_RESULT_STARTED".equals(type)) {
                 Map<String, Object> toolCall = findOrCreateToolCall(toolCalls, byCallId, callId, toolName);
+                attachToolNodeMetadata(toolCall, metadata, taskNodeId);
                 toolCall.put("status", "running");
             } else if ("TOOL_RESULT_DELTA".equals(type) || "TOOL_RESULT_DATA_DELTA".equals(type)) {
                 Map<String, Object> toolCall = findOrCreateToolCall(toolCalls, byCallId, callId, toolName);
+                attachToolNodeMetadata(toolCall, metadata, taskNodeId);
                 String result = String.valueOf(toolCall.getOrDefault("result", ""));
                 toolCall.put("result", result + safe(event.getContent()));
             } else if ("TOOL_RESULT_FINISHED".equals(type)) {
                 Map<String, Object> toolCall = findOrCreateToolCall(toolCalls, byCallId, callId, toolName);
+                attachToolNodeMetadata(toolCall, metadata, taskNodeId);
                 toolCall.put("status", "completed");
                 toolCall.put("durationMs", event.getElapsedMs());
             }
@@ -356,6 +375,18 @@ public class SessionController {
             }
         }
         return toolCalls;
+    }
+
+    private void attachToolNodeMetadata(Map<String, Object> toolCall,
+                                        Map<String, Object> metadata,
+                                        String taskNodeId) {
+        if (StringUtils.hasText(taskNodeId)) {
+            toolCall.put("taskNodeId", taskNodeId);
+        }
+        String agentName = firstString(metadata.get("agentName"));
+        if (StringUtils.hasText(agentName)) {
+            toolCall.put("agentName", agentName);
+        }
     }
 
     private Map<String, Object> normalizeMap(Object value) {

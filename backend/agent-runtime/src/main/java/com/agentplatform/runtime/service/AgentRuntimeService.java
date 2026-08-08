@@ -35,10 +35,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 智能体运行时总入口。
@@ -521,7 +523,7 @@ public class AgentRuntimeService {
         if (command.getConversationId() == null) {
             return null;
         }
-        return agentPlanStateRepository.findFirstByConversationIdAndStatusIn(
+        return agentPlanStateRepository.findFirstByConversationIdAndStatusInOrderByUpdatedAtDescIdDesc(
                 command.getConversationId(), List.of("INTERRUPTED")).orElse(null);
     }
 
@@ -632,10 +634,22 @@ public class AgentRuntimeService {
     }
 
     private RuntimeEventSink wrapLifecycleSink(Long runId, String traceId, RuntimeEventSink clientSink, long startedNanos) {
+        Object eventMonitor = new Object();
+        AtomicLong sequence = new AtomicLong();
         return event -> {
-            RuntimeEvent enriched = enrichLifecycleEvent(event);
-            traceService.recordAndForward(enriched, clientSink);
-            handleLifecycleEvent(runId, traceId, enriched, clientSink, startedNanos);
+            synchronized (eventMonitor) {
+                RuntimeEvent enriched = enrichLifecycleEvent(event);
+                if (enriched != null) {
+                    Map<String, Object> metadata = new LinkedHashMap<>();
+                    if (enriched.getMetadata() != null) {
+                        metadata.putAll(enriched.getMetadata());
+                    }
+                    metadata.put("sequence", sequence.incrementAndGet());
+                    enriched.setMetadata(metadata);
+                }
+                traceService.recordAndForward(enriched, clientSink);
+                handleLifecycleEvent(runId, traceId, enriched, clientSink, startedNanos);
+            }
         };
     }
 

@@ -1,11 +1,10 @@
 package com.agentplatform.runtime.multiagent;
 
-import com.agentplatform.persistence.entity.AgentEntity;
-import com.agentplatform.persistence.entity.ModelConfigEntity;
 import com.agentplatform.runtime.agentscope.AgentScopeRuntimeAdapter;
 import com.agentplatform.runtime.model.AgentRunResult;
 import com.agentplatform.runtime.model.RuntimeContext;
 import com.agentplatform.runtime.model.RuntimeEvent;
+import com.agentplatform.runtime.model.RuntimeEventSink;
 import com.agentplatform.runtime.model.RuntimeEventType;
 import com.agentplatform.runtime.service.AgentRunContextBuilder;
 import jakarta.annotation.Resource;
@@ -49,14 +48,17 @@ public class ExecutorNode implements AgentNode {
     }
 
     private AgentRunResult executeFocused(MultiAgentState state, AgentPlanStep step, int stepIndex, int totalSteps) {
-        state.setCurrentNode(nodeName());
-        RuntimeContext context = state.getRuntimeContext();
-        RuntimeContextSnapshot snapshot = RuntimeContextSnapshot.capture(context);
+        if (step == null) {
+            state.setCurrentNode(nodeName());
+        }
+        RuntimeContext context = step != null ? state.getRuntimeContext().fork() : state.getRuntimeContext();
+        RuntimeEventSink sink = step != null ? nodeScopedSink(state.getSink(), step) : state.getSink();
+        context.setRuntimeEventSink(sink);
         boolean switched = false;
         if (step != null && step.getAgentId() != null) {
             switched = contextBuilder.applyAgentOverride(context, step.getAgentId());
             if (!switched) {
-                emit(state, RuntimeEventType.RUNTIME_WARNING, "Agent 选择降级",
+                emit(context, sink, RuntimeEventType.RUNTIME_WARNING, "Agent 选择降级",
                         "计划步骤绑定的 Agent 不可用，已回退到当前智能体执行", Map.of(
                                 "node", nodeName(),
                                 "stepId", safe(step.getId()),
@@ -89,18 +91,14 @@ public class ExecutorNode implements AgentNode {
         if (step != null && StringUtils.hasText(step.getModelName())) {
             handoffMetadata.put("modelName", step.getModelName());
         }
-        emit(state, RuntimeEventType.AGENT_HANDOFF,
+        emit(context, sink, RuntimeEventType.AGENT_HANDOFF,
                 step != null ? "切换 Agent：" + activeAgentName + " / Step " + stepId : "切换 Agent：Executor",
                 step != null ? activeAgentName + " 开始执行计划步骤：" + stepTitle : "ExecutorAgent 开始按计划执行任务",
                 handoffMetadata);
 
-        String originalSystemPrompt = context.getSystemPrompt();
-        context.setSystemPrompt(appendExecutorPrompt(originalSystemPrompt, state.getPlan(), step, stepIndex, totalSteps, state));
-        try {
-            return agentScopeRuntimeAdapter.execute(context, state.getSink());
-        } finally {
-            snapshot.restore(context);
-        }
+        context.setSystemPrompt(appendExecutorPrompt(
+                context.getSystemPrompt(), state.getPlan(), step, stepIndex, totalSteps, state));
+        return agentScopeRuntimeAdapter.execute(context, sink);
     }
 
     private void fillRuntimeAgentMetadata(RuntimeContext context, AgentPlanStep step) {
@@ -137,7 +135,7 @@ public class ExecutorNode implements AgentNode {
                 5. 完成后用简洁清单说明实际执行了哪些动作、修改了哪些文件、还有哪些风险。
                 """ + formatPlanPrompt(plan)
                 + formatCurrentStepPrompt(currentStep, stepIndex, totalSteps)
-                + formatPreviousObservations(state);
+                + formatDependencyObservations(state, currentStep);
     }
 
     private String formatPlanPrompt(AgentPlan plan) {
@@ -190,28 +188,80 @@ public class ExecutorNode implements AgentNode {
         return builder.toString();
     }
 
-    private String formatPreviousObservations(MultiAgentState state) {
-        if (state == null || state.getObservations() == null || state.getObservations().isEmpty()) {
+    private String formatDependencyObservations(MultiAgentState state, AgentPlanStep currentStep) {
+        if (state == null) {
             return "";
         }
         StringBuilder builder = new StringBuilder();
-        builder.append("\n【前序步骤结果】\n");
-        for (String observation : state.getObservations()) {
-            if (StringUtils.hasText(observation)) {
-                builder.append("- ").append(observation.trim()).append("\n");
+        if (currentStep != null && currentStep.getDependsOn() != null && state.getPlan() != null
+                && state.getPlan().getSteps() != null) {
+            for (String dependencyId : currentStep.getDependsOn()) {
+                for (AgentPlanStep dependency : state.getPlan().getSteps()) {
+                    if (dependencyId.equals(dependency.getId()) && StringUtils.hasText(dependency.getOutput())) {
+                        if (builder.length() == 0) {
+                            builder.append("\n【依赖节点结果】\n");
+                        }
+                        builder.append("- ").append(safe(dependency.getTitle())).append("：\n")
+                                .append(abbreviate(dependency.getOutput(), 6000)).append("\n");
+                    }
+                }
+            }
+            return builder.toString();
+        }
+        if (state.getObservations() != null && !state.getObservations().isEmpty()) {
+            builder.append("\n【前序步骤结果】\n");
+            for (String observation : state.getObservations()) {
+                if (StringUtils.hasText(observation)) {
+                    builder.append("- ").append(observation.trim()).append("\n");
+                }
             }
         }
         return builder.toString();
+    }
+
+    private String abbreviate(String value, int maxChars) {
+        if (value == null || value.length() <= maxChars) {
+            return safe(value);
+        }
+        return value.substring(0, maxChars) + "...";
     }
 
     private String safe(String value) {
         return value == null ? "" : value;
     }
 
-    private void emit(MultiAgentState state, RuntimeEventType type, String stage,
+    private RuntimeEventSink nodeScopedSink(RuntimeEventSink downstream, AgentPlanStep step) {
+        return event -> {
+            if (event == null) {
+                return;
+            }
+            Map<String, Object> metadata = new LinkedHashMap<>();
+            if (event.getMetadata() != null) {
+                metadata.putAll(event.getMetadata());
+            }
+            metadata.putIfAbsent("taskNodeId", safe(step.getId()));
+            metadata.putIfAbsent("stepId", safe(step.getId()));
+            metadata.putIfAbsent("taskNodeTitle", safe(step.getTitle()));
+            metadata.putIfAbsent("agentName", safe(step.getAgentName()));
+            metadata.putIfAbsent("agentRole", safe(step.getAgentRole()));
+            metadata.putIfAbsent("dependsOn", step.getDependsOn() != null ? step.getDependsOn() : java.util.List.of());
+            if (step.getAgentId() != null) {
+                metadata.putIfAbsent("agentId", step.getAgentId());
+            }
+            if (step.getModelConfigId() != null) {
+                metadata.putIfAbsent("modelConfigId", step.getModelConfigId());
+            }
+            if (StringUtils.hasText(step.getModelName())) {
+                metadata.putIfAbsent("modelName", step.getModelName());
+            }
+            event.setMetadata(metadata);
+            downstream.emit(event);
+        };
+    }
+
+    private void emit(RuntimeContext context, RuntimeEventSink sink, RuntimeEventType type, String stage,
                       String content, Map<String, Object> metadata) {
-        RuntimeContext context = state.getRuntimeContext();
-        state.getSink().emit(RuntimeEvent.of(
+        sink.emit(RuntimeEvent.of(
                 context.getRunId(),
                 context.getTraceId(),
                 type,
@@ -230,51 +280,4 @@ public class ExecutorNode implements AgentNode {
         return (System.nanoTime() - started) / 1_000_000;
     }
 
-    private static class RuntimeContextSnapshot {
-
-        private AgentEntity agent;
-        private ModelConfigEntity modelConfig;
-        private String systemPrompt;
-        private String modelBaseUrl;
-        private String modelName;
-        private String apiKey;
-        private int maxIterations;
-        private int timeoutSeconds;
-        private boolean agentScopeSessionEnabled;
-        private String agentScopeSessionType;
-        private String agentScopeSessionKey;
-        private boolean agentScopeStateExists;
-
-        private static RuntimeContextSnapshot capture(RuntimeContext context) {
-            RuntimeContextSnapshot snapshot = new RuntimeContextSnapshot();
-            snapshot.agent = context.getAgent();
-            snapshot.modelConfig = context.getModelConfig();
-            snapshot.systemPrompt = context.getSystemPrompt();
-            snapshot.modelBaseUrl = context.getModelBaseUrl();
-            snapshot.modelName = context.getModelName();
-            snapshot.apiKey = context.getApiKey();
-            snapshot.maxIterations = context.getMaxIterations();
-            snapshot.timeoutSeconds = context.getTimeoutSeconds();
-            snapshot.agentScopeSessionEnabled = context.isAgentScopeSessionEnabled();
-            snapshot.agentScopeSessionType = context.getAgentScopeSessionType();
-            snapshot.agentScopeSessionKey = context.getAgentScopeSessionKey();
-            snapshot.agentScopeStateExists = context.isAgentScopeStateExists();
-            return snapshot;
-        }
-
-        private void restore(RuntimeContext context) {
-            context.setAgent(agent);
-            context.setModelConfig(modelConfig);
-            context.setSystemPrompt(systemPrompt);
-            context.setModelBaseUrl(modelBaseUrl);
-            context.setModelName(modelName);
-            context.setApiKey(apiKey);
-            context.setMaxIterations(maxIterations);
-            context.setTimeoutSeconds(timeoutSeconds);
-            context.setAgentScopeSessionEnabled(agentScopeSessionEnabled);
-            context.setAgentScopeSessionType(agentScopeSessionType);
-            context.setAgentScopeSessionKey(agentScopeSessionKey);
-            context.setAgentScopeStateExists(agentScopeStateExists);
-        }
-    }
 }

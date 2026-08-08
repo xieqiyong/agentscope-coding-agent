@@ -14,6 +14,12 @@
 
 ![运行状态恢复](./docs/images/状态恢复.png)
 
+### 多智能体并行
+- 支持多智能体多模型并行执行任务
+- 支持长任务执行
+- 支持图编排
+![img.png](img.png)
+
 # Java AgentScope Coding Agent
 
 一个基于 **Java + Spring Boot + AgentScope Java** 的网页版 Coding Agent 实验项目。
@@ -78,10 +84,14 @@ AgentScope 负责 Agent Loop。
 - 支持自定义 Agent：名称、描述、系统提示词、Skills、MCP 服务、模型配置、最大迭代次数和超时时间
 - 支持聊天页选择 Agent，并提供多 Agent 协作入口
 - 新增轻量图编排器 `AgentGraph`，支持 `addNode`、`addEdge`、`addConditionalEdge`
+- 新增任务依赖图 `TaskGraph`，计划步骤通过 `dependsOn` 表达 fan-out / fan-in
+- 新增有界并行调度器：依赖满足且绑定不同 Agent 的节点可以并行执行，同一 Agent 的 Session 保持串行
 - Router / Planner / Executor 通过图式编排串联
 - Planner 可读取当前工作区可用 Agent，并为计划步骤分配 `agentId`、`agentRole`、`modelConfigId`、`modelName`
 - Executor 执行计划步骤时可临时切换到对应专家 Agent 的 prompt 和模型配置
 - 计划卡片支持步骤状态恢复、逐步执行、取消运行和专家/模型展示
+- 并行节点拥有独立 RuntimeContext，模型、Prompt、Session 和流式输出不会互相覆盖
+- 节点输出、错误、尝试次数和起止时间会写入 checkpoint，刷新或中断后可以按依赖继续
 
 ### Workspace Tools
 
@@ -257,8 +267,11 @@ spring:
 
 ```bash
 cd backend
-mvn -pl bootstrap -am spring-boot:run
+mvn -DskipTests install
+mvn -pl bootstrap spring-boot:run
 ```
+
+第一条命令会先把多模块依赖安装到本地 Maven 仓库；启动阶段不要追加 `-am`，否则 Spring Boot 插件会尝试启动没有主类的父聚合模块。
 
 默认后端端口：
 
@@ -419,7 +432,7 @@ AGENTS.md
 
 - A2A 协议和 Nacos Agent 注册发现
 - 多实例 sessionKey 锁和分布式运行协调
-- 并行专家协作、进度合并和 Review Agent
+- Git worktree 级并行写入隔离、Review Agent 和 Repair Loop
 - tool_calls 物化写入
 - 前端记忆审核管理
 - Session Memory 摘要压缩
@@ -454,6 +467,7 @@ AGENTS.md
 - 记忆审核接口和前端管理
 - A2A 协议和 Nacos Agent 注册发现
 - 多 Agent 协作进度看板
+- Git worktree 隔离与并行变更合并
 - Review Agent 与计划执行结果合并
 - Bash 输出流式展示
 - Session Memory 滑动窗口 + 摘要

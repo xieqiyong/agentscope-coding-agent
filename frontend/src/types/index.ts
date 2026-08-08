@@ -78,6 +78,8 @@ export interface ChatMessage {
 }
 
 export interface PlanInfo {
+  graphVersion?: number
+  maxConcurrency?: number
   title: string
   summary: string
   riskLevel: RiskLevel
@@ -85,20 +87,27 @@ export interface PlanInfo {
   acceptanceCriteria: string[]
   expectedTools: string[]
   requiresApproval: boolean
-  executionStatus?: 'idle' | 'running' | 'completed' | 'failed' | 'cancelled'
+  executionStatus?: 'idle' | 'running' | 'waiting' | 'completed' | 'failed' | 'cancelled'
 }
 
 export interface PlanStep {
   id: string
   title: string
   description?: string
-  status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'cancelled'
+  status: 'pending' | 'ready' | 'in_progress' | 'completed' | 'failed' | 'waiting' | 'cancelled'
   agentId?: string | number
   agentName?: string
   agentRole?: string
   modelConfigId?: string | number
   modelName?: string
   tools: string[]
+  dependsOn: string[]
+  attempt?: number
+  output?: string
+  errorMessage?: string
+  startedAt?: string
+  finishedAt?: string
+  activity?: string
 }
 
 export interface ThinkingInfo {
@@ -120,6 +129,8 @@ export interface ToolCallInfo {
   startedAt?: number
   durationMs?: number
   patchId?: string
+  taskNodeId?: string
+  agentName?: string
 }
 
 // ==================== Memory ====================

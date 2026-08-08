@@ -9,8 +9,8 @@ import lombok.Getter;
 import lombok.Setter;
 
 /**
- * 多 Agent 计划执行进度持久化。
- * 一个会话至多一条活跃记录（RUNNING / INTERRUPTED），用于中断后从断点续接执行。
+ * 多 Agent 任务图执行进度持久化。
+ * planJson 保存节点依赖、状态和输出，用于中断后按依赖关系续接执行。
  */
 @Getter
 @Setter
@@ -38,13 +38,13 @@ public class AgentPlanStateEntity extends BaseEntity {
     private String planJson;
 
     /**
-     * 下一步要执行的步骤索引；[0, nextStepIndex) 视为已完成
+     * 已完成节点数量。字段名为兼容旧表保留，旧线性计划仍把它作为续接索引。
      */
     @Column(name = "next_step_index", nullable = false)
     private Integer nextStepIndex;
 
     /**
-     * 状态：RUNNING（执行中）/ INTERRUPTED（被中断，可续接）/ COMPLETED（全部完成）
+     * 状态：RUNNING / WAITING_APPROVAL / INTERRUPTED / COMPLETED / FAILED
      */
     @Column(name = "status", nullable = false, length = 32)
     private String status;

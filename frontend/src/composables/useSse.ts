@@ -209,6 +209,8 @@ export function useSse() {
       case 'ROUTE_SELECTED':
       case 'PLAN_CREATED':
       case 'PLAN_STEP_STATUS_CHANGED':
+      case 'TASK_GRAPH_STARTED':
+      case 'TASK_GRAPH_FINISHED':
         runtimeStore.addEvent({
           id: event.eventId,
           type,

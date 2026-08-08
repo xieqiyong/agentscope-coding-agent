@@ -5,7 +5,9 @@ import com.agentplatform.runtime.model.RuntimeEventSink;
 import com.agentplatform.runtime.model.AgentRunResult;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 多 Agent 共享状态。
@@ -24,6 +26,7 @@ public class MultiAgentState {
     private AgentNodeResult lastNodeResult;
     private AgentRunResult terminalResult;
     private List<AgentRunResult> stepResults = new ArrayList<>();
+    private Map<String, AgentRunResult> nodeResults = new LinkedHashMap<>();
     private int nextStepIndex;
     /**
      * 当前 plan 执行进度的持久化记录 ID（agent_plan_state 表），中断后续接用
@@ -118,6 +121,14 @@ public class MultiAgentState {
 
     public void setStepResults(List<AgentRunResult> stepResults) {
         this.stepResults = stepResults;
+    }
+
+    public Map<String, AgentRunResult> getNodeResults() {
+        return nodeResults;
+    }
+
+    public void setNodeResults(Map<String, AgentRunResult> nodeResults) {
+        this.nodeResults = nodeResults;
     }
 
     public int getNextStepIndex() {

@@ -18,6 +18,12 @@ public class AgentPlanStep {
     private Long modelConfigId;
     private String modelName;
     private List<String> tools = new ArrayList<>();
+    private List<String> dependsOn = new ArrayList<>();
+    private int attempt;
+    private String output;
+    private String errorMessage;
+    private String startedAt;
+    private String finishedAt;
 
     public String getId() {
         return id;
@@ -97,5 +103,53 @@ public class AgentPlanStep {
 
     public void setTools(List<String> tools) {
         this.tools = tools;
+    }
+
+    public List<String> getDependsOn() {
+        return dependsOn;
+    }
+
+    public void setDependsOn(List<String> dependsOn) {
+        this.dependsOn = dependsOn;
+    }
+
+    public int getAttempt() {
+        return attempt;
+    }
+
+    public void setAttempt(int attempt) {
+        this.attempt = attempt;
+    }
+
+    public String getOutput() {
+        return output;
+    }
+
+    public void setOutput(String output) {
+        this.output = output;
+    }
+
+    public String getErrorMessage() {
+        return errorMessage;
+    }
+
+    public void setErrorMessage(String errorMessage) {
+        this.errorMessage = errorMessage;
+    }
+
+    public String getStartedAt() {
+        return startedAt;
+    }
+
+    public void setStartedAt(String startedAt) {
+        this.startedAt = startedAt;
+    }
+
+    public String getFinishedAt() {
+        return finishedAt;
+    }
+
+    public void setFinishedAt(String finishedAt) {
+        this.finishedAt = finishedAt;
     }
 }

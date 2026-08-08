@@ -221,6 +221,7 @@ function formatPlanStep(step: PlanStep, index: number): string {
   if (step.tools.length > 0) {
     parts.push(`   预期工具：${step.tools.join(', ')}`)
   }
+  parts.push(`   依赖节点：${step.dependsOn.length > 0 ? step.dependsOn.join(', ') : '无'}`)
   if (step.agentName || step.agentRole || step.agentId) {
     const agentParts = [
       step.agentName ? `名称=${step.agentName}` : '',
@@ -242,7 +243,7 @@ function formatPlanStep(step: PlanStep, index: number): string {
 function buildPlanKey(plan: PlanInfo): string {
   return [
     plan.title,
-    plan.steps.map((step) => `${step.id}:${step.title}`).join('|'),
+    plan.steps.map((step) => `${step.id}:${step.title}:${step.dependsOn.join(',')}`).join('|'),
   ].join('::')
 }
 </script>

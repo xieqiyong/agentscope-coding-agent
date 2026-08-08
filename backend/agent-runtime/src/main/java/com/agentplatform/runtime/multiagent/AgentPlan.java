@@ -8,6 +8,16 @@ import java.util.List;
  */
 public class AgentPlan {
 
+    /**
+     * 图协议版本。1 表示旧的线性计划，2 表示带依赖关系的任务图。
+     */
+    private int graphVersion = 1;
+
+    /**
+     * 单次任务图允许同时运行的最大节点数。
+     */
+    private int maxConcurrency = 1;
+
     private String title;
     private String summary;
     private String riskLevel = "MEDIUM";
@@ -15,6 +25,22 @@ public class AgentPlan {
     private List<String> acceptanceCriteria = new ArrayList<>();
     private List<String> expectedTools = new ArrayList<>();
     private boolean requiresApproval = false;
+
+    public int getGraphVersion() {
+        return graphVersion;
+    }
+
+    public void setGraphVersion(int graphVersion) {
+        this.graphVersion = graphVersion;
+    }
+
+    public int getMaxConcurrency() {
+        return maxConcurrency;
+    }
+
+    public void setMaxConcurrency(int maxConcurrency) {
+        this.maxConcurrency = maxConcurrency;
+    }
 
     public String getTitle() {
         return title;

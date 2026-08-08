@@ -56,6 +56,37 @@ public class RuntimeContext {
      */
     private boolean agentScopeStateExists;
 
+    /**
+     * 为并行任务节点创建独立上下文，避免 Agent、模型和 Session 字段互相覆盖。
+     */
+    public RuntimeContext fork() {
+        RuntimeContext copy = new RuntimeContext();
+        copy.command = command;
+        copy.workspace = workspace;
+        copy.agent = agent;
+        copy.modelConfig = modelConfig;
+        copy.conversationId = conversationId;
+        copy.userMessageId = userMessageId;
+        copy.runId = runId;
+        copy.traceId = traceId;
+        copy.systemPrompt = systemPrompt;
+        copy.modelBaseUrl = modelBaseUrl;
+        copy.modelName = modelName;
+        copy.apiKey = apiKey;
+        copy.maxIterations = maxIterations;
+        copy.timeoutSeconds = timeoutSeconds;
+        copy.recentMessages = new ArrayList<>(recentMessages);
+        copy.activeMemories = new ArrayList<>(activeMemories);
+        copy.runtimeEventSink = runtimeEventSink;
+        copy.runStartedNanos = runStartedNanos;
+        copy.platformApprovalRequired = platformApprovalRequired;
+        copy.agentScopeSessionEnabled = agentScopeSessionEnabled;
+        copy.agentScopeSessionType = agentScopeSessionType;
+        copy.agentScopeSessionKey = agentScopeSessionKey;
+        copy.agentScopeStateExists = agentScopeStateExists;
+        return copy;
+    }
+
     public AgentRunCommand getCommand() {
         return command;
     }

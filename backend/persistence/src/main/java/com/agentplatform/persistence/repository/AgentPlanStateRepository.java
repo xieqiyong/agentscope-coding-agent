@@ -16,5 +16,6 @@ public interface AgentPlanStateRepository extends JpaRepository<AgentPlanStateEn
     /**
      * 按会话查第一条处于指定状态的 plan 进度（用于定位可续接的 INTERRUPTED 记录或当前 RUNNING 记录）。
      */
-    Optional<AgentPlanStateEntity> findFirstByConversationIdAndStatusIn(Long conversationId, List<String> statuses);
+    Optional<AgentPlanStateEntity> findFirstByConversationIdAndStatusInOrderByUpdatedAtDescIdDesc(
+            Long conversationId, List<String> statuses);
 }

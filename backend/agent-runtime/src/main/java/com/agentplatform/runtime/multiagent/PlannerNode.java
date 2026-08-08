@@ -22,10 +22,12 @@ import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * PlannerAgent。
@@ -114,22 +116,51 @@ public class PlannerNode implements AgentNode {
                 6. tools 只能从 LS、Read、Grep、Glob、WebSearch、Edit、Write、apply_patch、Bash 中选择；计划阶段只是声明可能需要的工具。
                 7. 每个 step 尽量选择一个最匹配的可用 Agent；如果没有匹配项，再使用 ExecutorAgent。
                 8. 不要填写 modelName 和 modelConfigId，模型由系统根据 Agent 配置自动匹配。
+                9. graphVersion 固定为 2，maxConcurrency 建议为 2 到 4。
+                10. 每个步骤必须填写 dependsOn。根节点使用空数组；只有依赖全部完成后，该步骤才会执行。
+                11. 没有依赖关系的步骤可以并行。全栈任务优先采用“架构约束 -> 前端/后端并行 -> 汇总审查”。
+                12. 不要把存在先后关系或可能修改同一批文件的步骤安排为并行节点。
 
                 JSON Schema：
                 {
+                  "graphVersion": 2,
+                  "maxConcurrency": 3,
                   "title": "计划标题",
                   "summary": "一句话说明",
                   "riskLevel": "LOW|MEDIUM|HIGH|CRITICAL",
                   "steps": [
                     {
-                      "id": "1",
-                      "title": "步骤标题",
-                      "description": "步骤说明",
+                      "id": "architecture",
+                      "title": "确定架构约束",
+                      "description": "读取关键代码并给出前后端共同遵守的接口约束",
                       "status": "pending",
                       "agentId": 1,
+                      "agentName": "技术架构师",
+                      "agentRole": "ARCHITECT",
+                      "dependsOn": [],
+                      "tools": ["Read", "Grep"]
+                    },
+                    {
+                      "id": "frontend",
+                      "title": "实现前端改动",
+                      "description": "根据架构节点结果完成前端实现",
+                      "status": "pending",
+                      "agentId": 2,
                       "agentName": "前端专家",
                       "agentRole": "FRONTEND",
-                      "tools": ["Read", "Grep"]
+                      "dependsOn": ["architecture"],
+                      "tools": ["Read", "Edit"]
+                    },
+                    {
+                      "id": "backend",
+                      "title": "实现后端改动",
+                      "description": "根据架构节点结果完成后端实现",
+                      "status": "pending",
+                      "agentId": 3,
+                      "agentName": "后端专家",
+                      "agentRole": "BACKEND",
+                      "dependsOn": ["architecture"],
+                      "tools": ["Read", "Edit"]
                     }
                   ],
                   "acceptanceCriteria": ["完成标准"],
@@ -199,6 +230,8 @@ public class PlannerNode implements AgentNode {
 
     private AgentPlan fallbackPlan(String task) {
         AgentPlan plan = new AgentPlan();
+        plan.setGraphVersion(2);
+        plan.setMaxConcurrency(1);
         plan.setTitle("执行计划：" + abbreviate(task, 40));
         plan.setSummary("先收集项目证据，再执行最小修改，最后审查结果。");
         plan.setRiskLevel("MEDIUM");
@@ -210,6 +243,9 @@ public class PlannerNode implements AgentNode {
         steps.add(step("2", "读取关键文件", "读取目标文件和调用方，确认当前实现，不凭猜测下结论。", List.of("Read")));
         steps.add(step("3", "制定修改方案", "基于证据确定最小修改范围，并识别需要执行的工具。", List.of()));
         steps.add(step("4", "执行并审查", "执行计划后检查 diff、工具结果和风险点。", List.of("Edit", "apply_patch", "Bash")));
+        for (int i = 1; i < steps.size(); i++) {
+            steps.get(i).setDependsOn(List.of(steps.get(i - 1).getId()));
+        }
         plan.setSteps(steps);
         plan.setAcceptanceCriteria(List.of("计划步骤有明确顺序", "修改前先读取目标文件", "工具执行限制在当前 workspace 内", "最终输出说明验证方式"));
         return plan;
@@ -229,23 +265,34 @@ public class PlannerNode implements AgentNode {
 
     private void normalizePlan(AgentPlan plan, String task, RuntimeContext context) {
         List<AgentEntity> availableAgents = listAvailableAgents(context);
+        plan.setGraphVersion(2);
+        plan.setMaxConcurrency(Math.max(1, Math.min(4, plan.getMaxConcurrency() <= 0 ? 3 : plan.getMaxConcurrency())));
         if (!StringUtils.hasText(plan.getTitle())) {
             plan.setTitle("执行计划：" + abbreviate(task, 40));
         }
         if (!StringUtils.hasText(plan.getSummary())) {
             plan.setSummary("PlannerAgent 已生成结构化执行计划。");
         }
-        if (!List.of("LOW", "MEDIUM", "HIGH", "CRITICAL").contains(plan.getRiskLevel())) {
+        String riskLevel = StringUtils.hasText(plan.getRiskLevel())
+                ? plan.getRiskLevel().trim().toUpperCase(Locale.ROOT)
+                : "";
+        if (!List.of("LOW", "MEDIUM", "HIGH", "CRITICAL").contains(riskLevel)) {
             plan.setRiskLevel("MEDIUM");
+        } else {
+            plan.setRiskLevel(riskLevel);
         }
         if (plan.getSteps() == null || plan.getSteps().isEmpty()) {
             plan.setSteps(fallbackPlan(task).getSteps());
         }
+        Set<String> nodeIds = new HashSet<>();
         for (int i = 0; i < plan.getSteps().size(); i++) {
             AgentPlanStep step = plan.getSteps().get(i);
-            if (!StringUtils.hasText(step.getId())) {
-                step.setId(String.valueOf(i + 1));
+            String nodeId = StringUtils.hasText(step.getId()) ? step.getId().trim() : String.valueOf(i + 1);
+            if (!nodeIds.add(nodeId)) {
+                nodeId = uniqueNodeId(nodeIds, i + 1);
+                nodeIds.add(nodeId);
             }
+            step.setId(nodeId);
             if (!StringUtils.hasText(step.getTitle())) {
                 step.setTitle("步骤 " + step.getId());
             }
@@ -257,12 +304,59 @@ public class PlannerNode implements AgentNode {
             if (step.getTools() == null) {
                 step.setTools(List.of());
             }
+            if (step.getDependsOn() == null) {
+                step.setDependsOn(List.of());
+            }
         }
+        normalizeDependencies(plan);
         if (plan.getAcceptanceCriteria() == null) {
             plan.setAcceptanceCriteria(List.of());
         }
         if (plan.getExpectedTools() == null) {
             plan.setExpectedTools(List.of());
+        }
+    }
+
+    private String uniqueNodeId(Set<String> nodeIds, int fallbackIndex) {
+        String candidate = String.valueOf(fallbackIndex);
+        int suffix = 1;
+        while (nodeIds.contains(candidate)) {
+            candidate = fallbackIndex + "-" + suffix++;
+        }
+        return candidate;
+    }
+
+    /**
+     * 清理模型输出中的非法依赖；模型没有给出任何依赖时按线性计划兜底。
+     */
+    private void normalizeDependencies(AgentPlan plan) {
+        List<AgentPlanStep> steps = plan.getSteps();
+        List<String> nodeIds = steps.stream().map(AgentPlanStep::getId).toList();
+        boolean hasDependency = false;
+        for (AgentPlanStep step : steps) {
+            List<String> normalized = step.getDependsOn().stream()
+                    .filter(StringUtils::hasText)
+                    .map(String::trim)
+                    .filter(nodeIds::contains)
+                    .filter(dependency -> !dependency.equals(step.getId()))
+                    .distinct()
+                    .toList();
+            step.setDependsOn(new ArrayList<>(normalized));
+            hasDependency = hasDependency || !normalized.isEmpty();
+        }
+        if (!hasDependency && steps.size() > 1) {
+            makePlanSequential(steps);
+        }
+        try {
+            TaskGraph.from(plan);
+        } catch (IllegalArgumentException ignored) {
+            makePlanSequential(steps);
+        }
+    }
+
+    private void makePlanSequential(List<AgentPlanStep> steps) {
+        for (int i = 0; i < steps.size(); i++) {
+            steps.get(i).setDependsOn(i == 0 ? List.of() : List.of(steps.get(i - 1).getId()));
         }
     }
 
@@ -386,8 +480,10 @@ public class PlannerNode implements AgentNode {
             return null;
         }
         String toolsText = step.getTools() != null ? String.join(",", step.getTools()) : "";
-        String text = safe(step.getTitle()) + "\n" + safe(step.getDescription()) + "\n" + toolsText;
-        String role = inferRoleFromText(text);
+        String role = inferRoleFromText(step.getTitle());
+        if ("EXECUTOR".equals(role)) {
+            role = inferRoleFromText(safe(step.getDescription()) + "\n" + toolsText);
+        }
         if (!"EXECUTOR".equals(role)) {
             AgentEntity matched = findByRole(role, availableAgents);
             if (matched != null) {
@@ -398,8 +494,12 @@ public class PlannerNode implements AgentNode {
     }
 
     private String inferAgentRole(AgentEntity agent) {
-        String text = safe(agent.getName()) + "\n" + safe(agent.getDescription()) + "\n" + safe(agent.getSystemPrompt());
-        return inferRoleFromText(text);
+        String role = inferRoleFromText(agent.getName());
+        if (!"EXECUTOR".equals(role)) {
+            return role;
+        }
+        role = inferRoleFromText(agent.getDescription());
+        return !"EXECUTOR".equals(role) ? role : inferRoleFromText(agent.getSystemPrompt());
     }
 
     private String inferRoleFromText(String text) {
