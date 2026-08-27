@@ -80,6 +80,12 @@ public class AgentRunCommand {
      */
     private Boolean traceThinkingContent;
 
+    /**
+     * 聊天框 @ 动态挂载的技能名称列表。
+     * 中文注释：只对本次运行生效，运行时按名称加载启用中的技能并注入系统提示词。
+     */
+    private java.util.List<String> mountedSkills;
+
     public Long getWorkspaceId() {
         return workspaceId;
     }
@@ -190,5 +196,13 @@ public class AgentRunCommand {
 
     public void setTraceThinkingContent(Boolean traceThinkingContent) {
         this.traceThinkingContent = traceThinkingContent;
+    }
+
+    public java.util.List<String> getMountedSkills() {
+        return mountedSkills;
+    }
+
+    public void setMountedSkills(java.util.List<String> mountedSkills) {
+        this.mountedSkills = mountedSkills;
     }
 }

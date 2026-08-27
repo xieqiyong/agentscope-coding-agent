@@ -28,7 +28,14 @@ spring:
 server:
   port: 8081
 
+spring.servlet.multipart:
+  max-file-size: 20MB
+  max-request-size: 25MB
+
 agent:
+  skill:
+    # 导入的 Agent Skills zip 包解压存放目录
+    store-dir: data/skills
   runtime:
     multi-agent:
       # 单张任务图的并行节点上限；所有任务图共享一个有界工作线程池。

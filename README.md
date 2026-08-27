@@ -20,6 +20,9 @@
 - 支持图编排
 ![img.png](img.png)
 
+### 长期记忆生效
+![img.png](./docs/images/jiyi.png)
+
 # Java AgentScope Coding Agent
 
 一个基于 **Java + Spring Boot + AgentScope Java** 的网页版 Coding Agent 实验项目。

@@ -8,17 +8,14 @@
       <button class="sidebar-icon-item" @click="startNewChat" title="新对话">
         <i class="pi pi-plus"></i>
       </button>
-      <button class="sidebar-icon-item" @click="uiStore.toggleLeftSidebar()" title="会话">
-        <i class="pi pi-comments"></i>
-      </button>
-      <button class="sidebar-icon-item" @click="uiStore.toggleLeftSidebar()" title="文件">
-        <i class="pi pi-folder"></i>
-      </button>
-      <button class="sidebar-icon-item" @click="uiStore.toggleLeftSidebar()" title="记忆">
-        <i class="pi pi-bookmark"></i>
-      </button>
       <router-link class="sidebar-icon-item" to="/agents" title="智能体">
         <i class="pi pi-sitemap"></i>
+      </router-link>
+      <router-link class="sidebar-icon-item" to="/skills" title="Skills">
+        <i class="pi pi-bolt"></i>
+      </router-link>
+      <router-link class="sidebar-icon-item" to="/mcp" title="MCP 服务">
+        <i class="pi pi-server"></i>
       </router-link>
     </div>
 
@@ -28,9 +25,6 @@
         <div class="brand-row">
           <div class="brand-name">Coding Agent</div>
           <div class="brand-actions">
-            <button class="brand-icon-btn" title="搜索">
-              <i class="pi pi-search"></i>
-            </button>
             <button class="brand-icon-btn" @click="uiStore.toggleLeftSidebar()" title="折叠侧栏">
               <i class="pi pi-window-minimize"></i>
             </button>
@@ -40,27 +34,27 @@
         <nav class="main-nav" aria-label="主导航">
           <button class="nav-item strong" type="button" @click="startNewChat">
             <span class="nav-icon round"><i class="pi pi-plus"></i></span>
-            <span>New chat</span>
-          </button>
-          <button class="nav-item" type="button">
-            <span class="nav-icon"><i class="pi pi-comments"></i></span>
-            <span>Chats</span>
+            <span>新对话</span>
           </button>
           <button class="nav-item" type="button" @click="filesOpen = !filesOpen">
             <span class="nav-icon"><i class="pi pi-folder"></i></span>
-            <span>Projects</span>
-          </button>
-          <button class="nav-item" type="button">
-            <span class="nav-icon"><i class="pi pi-file-edit"></i></span>
-            <span>Artifacts</span>
+            <span>文件</span>
           </button>
           <router-link class="nav-item nav-link" to="/agents">
             <span class="nav-icon"><i class="pi pi-sitemap"></i></span>
-            <span>Agents</span>
+            <span>智能体</span>
+          </router-link>
+          <router-link class="nav-item nav-link" to="/skills">
+            <span class="nav-icon"><i class="pi pi-bolt"></i></span>
+            <span>Skills</span>
+          </router-link>
+          <router-link class="nav-item nav-link" to="/mcp">
+            <span class="nav-icon"><i class="pi pi-server"></i></span>
+            <span>MCP 服务</span>
           </router-link>
           <button class="nav-item" type="button" @click="memoryOpen = !memoryOpen">
             <span class="nav-icon"><i class="pi pi-briefcase"></i></span>
-            <span>Customize</span>
+            <span>记忆</span>
           </button>
         </nav>
       </div>
@@ -88,13 +82,6 @@
           <div class="section-body">
             <MemoryPanel />
           </div>
-        </div>
-      </div>
-
-      <div class="sidebar-footer">
-        <div class="user-avatar">A</div>
-        <div class="user-meta">
-          <div class="user-name">admin</div>
         </div>
       </div>
     </div>
@@ -308,40 +295,6 @@ function startNewChat() {
 
 .section-body {
   padding: var(--spacing-xs) var(--spacing-sm);
-}
-
-.sidebar-footer {
-  min-height: 72px;
-  border-top: 1px solid var(--border-color);
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  background: rgba(246, 243, 236, 0.94);
-  flex-shrink: 0;
-}
-
-.user-avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: #2f2f2f;
-  color: #fffefa;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.25rem;
-  font-weight: 700;
-}
-
-.user-meta {
-  flex: 1;
-  min-width: 0;
-}
-
-.user-name {
-  color: var(--ink);
-  font-weight: 600;
 }
 
 @media (max-width: 900px) {

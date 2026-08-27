@@ -1,9 +1,10 @@
 ﻿<template>
   <div :class="['chat-panel', { 'landing-mode': isLanding }]">
     <div v-if="isLanding" class="landing-shell">
-      <div class="greeting">
-        <span class="greeting-mark">✳</span>
-        <h1>{{ greetingTitle }}</h1>
+      <!-- 落地页主视觉：标识 + 标语 -->
+      <div class="hero">
+        <span class="hero-mark">✳</span>
+        <h1 class="hero-title">把想法<span class="hero-accent">编译</span>成现实</h1>
       </div>
 
       <!-- 无工作区：引导注册，不展示禁用的输入框和纯装饰 chip -->
@@ -69,13 +70,6 @@ const isLanding = computed(() => (
   !workspaceStore.hasWorkspace
   || (chatStore.messages.length === 0 && !chatStore.isStreaming)
 ))
-
-const greetingTitle = computed(() => {
-  if (!workspaceStore.hasWorkspace) return 'Choose a workspace'
-  const hour = new Date().getHours()
-  const period = hour < 12 ? 'Morning' : hour < 18 ? 'Afternoon' : 'Evening'
-  return `${period}, admin`
-})
 
 // 用户在底部附近时才跟随流式输出；上滑查看历史时不抢滚动位置。
 function scrollToBottom(force = false) {
@@ -274,7 +268,7 @@ function buildPlanKey(plan: PlanInfo): string {
   transform: translateY(44px);
 }
 
-.greeting {
+.hero {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -283,19 +277,37 @@ function buildPlanKey(plan: PlanInfo): string {
   color: var(--ink);
 }
 
-.greeting h1 {
+.hero-title {
   margin: 0;
   font-family: var(--font-serif);
-  font-size: clamp(2.75rem, 5vw, 4.25rem);
+  font-size: clamp(2.5rem, 4.5vw, 3.75rem);
   font-weight: 500;
   line-height: 1;
-  letter-spacing: -0.055em;
+  letter-spacing: -0.05em;
 }
 
-.greeting-mark {
+.hero-accent {
   color: var(--accent);
-  font-size: clamp(2rem, 3vw, 3rem);
+  font-style: italic;
+  padding: 0 0.08em;
+}
+
+.hero-mark {
+  color: var(--accent);
+  font-size: clamp(1.9rem, 3vw, 2.8rem);
   line-height: 1;
+  animation: hero-spin 14s linear infinite;
+}
+
+@keyframes hero-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-mark {
+    animation: none;
+  }
 }
 
 .onboarding-cta {
@@ -330,7 +342,7 @@ function buildPlanKey(plan: PlanInfo): string {
     padding: 5vh 16px 2vh;
   }
 
-  .greeting {
+  .hero {
     gap: 12px;
     margin-bottom: 30px;
   }

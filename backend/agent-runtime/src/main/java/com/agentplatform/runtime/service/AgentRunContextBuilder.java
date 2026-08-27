@@ -42,6 +42,9 @@ public class AgentRunContextBuilder {
     private ConversationMessageRepository conversationMessageRepository;
 
     @Resource
+    private com.agentplatform.persistence.repository.SkillRepository skillRepository;
+
+    @Resource
     private MemoryContextAssembler memoryContextAssembler;
 
     public RuntimeContext build(AgentRunCommand command, Long conversationId, Long userMessageId,
@@ -81,7 +84,9 @@ public class AgentRunContextBuilder {
         context.setApiKey(firstNonBlank(resolvedApiKey, command.getApiKey()));
         context.setMaxIterations(firstPositive(command.getMaxIterations(), agent.getMaxIterations(), 8));
         context.setTimeoutSeconds(firstPositive(command.getTimeoutSeconds(), agent.getTimeoutSeconds(), 86400));
-        context.setSystemPrompt(buildSystemPrompt(agent, workspace, activeMemories));
+        // 聊天框 @ 动态挂载的技能：只对本次运行生效，附加在 Agent 系统提示词之后。
+        context.setSystemPrompt(buildSystemPrompt(agent, workspace, activeMemories)
+                + buildMountedSkillsPrompt(command.getMountedSkills()));
         return context;
     }
 
@@ -173,6 +178,33 @@ public class AgentRunContextBuilder {
                 5. 工具结果优先于模型猜测；如果证据不足，要明确说明。
                 6. 上方偏好和约束是隐式协作规则，按规则行动即可；不要在回答中主动解释这些规则来自哪里，也不要主动说已经保存或记录，除非用户明确询问已知偏好、项目约束或要求确认保存结果。
                 """.formatted(basePrompt, workspace.getName(), workspace.getRootPath(), memoryText);
+    }
+
+    /**
+     * 组装本次运行动态挂载的 Skills 提示词段落。
+     * 中文注释：找不到或已停用的技能会被静默跳过，不阻断运行。
+     */
+    private String buildMountedSkillsPrompt(List<String> mountedSkills) {
+        if (mountedSkills == null || mountedSkills.isEmpty()) {
+            return "";
+        }
+        List<com.agentplatform.persistence.entity.SkillEntity> skills =
+                skillRepository.findByNameInAndEnabledTrue(mountedSkills);
+        if (skills.isEmpty()) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder("\n\n【本次动态挂载的 Skills】");
+        for (com.agentplatform.persistence.entity.SkillEntity skill : skills) {
+            builder.append("\n### ").append(skill.getName());
+            if (StringUtils.hasText(skill.getDescription())) {
+                builder.append(" - ").append(skill.getDescription());
+            }
+            if (StringUtils.hasText(skill.getContent())) {
+                builder.append('\n').append(skill.getContent());
+            }
+        }
+        builder.append("\n以上 Skills 是用户在本次对话中显式挂载的操作指引，按其步骤执行；与项目事实冲突时以工具读取的证据为准。");
+        return builder.toString();
     }
 
     private String buildAgentBindingsPrompt(AgentEntity agent) {

@@ -37,6 +37,7 @@ export function useSse() {
     runMode?: string
     plan?: PlanInfo
     traceThinkingContent?: boolean
+    mountedSkills?: string[]
   }) {
     error.value = null
     sharedAbortController.value = new AbortController()
