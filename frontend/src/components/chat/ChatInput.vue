@@ -51,13 +51,29 @@
           <button class="utility-btn add" type="button" title="添加上下文">
             <i class="pi pi-plus"></i>
           </button>
+          <button class="utility-btn" type="button" title="挂载技能（只对本次对话生效）" @click="openMentionPicker">
+            <i class="pi pi-bolt"></i>
+          </button>
+          <button
+            v-if="agentStore.currentAgent"
+            class="agent-pill"
+            type="button"
+            title="当前智能体，点击管理"
+            @click="$router.push('/agents')"
+          >
+            <i class="pi pi-sitemap" style="font-size: 0.62rem;"></i>
+            <span class="agent-pill-name">{{ agentStore.currentAgent.name }}</span>
+            <i class="pi pi-chevron-down" style="font-size: 0.55rem;"></i>
+          </button>
           <div class="action-spacer"></div>
-          <button class="utility-btn" type="button" title="语音输入">
-            <i class="pi pi-microphone"></i>
-          </button>
-          <button class="utility-btn" type="button" title="工具">
-            <i class="pi pi-sliders-h"></i>
-          </button>
+          <span
+            v-if="sessionUsage.inputTokens || sessionUsage.outputTokens"
+            class="toolbar-usage"
+            title="本会话累计 token 用量与成本估算"
+          >
+            {{ formatTokens(sessionUsage.inputTokens + sessionUsage.outputTokens) }} tokens
+            <template v-if="sessionUsage.costUsd"> · ${{ sessionUsage.costUsd.toFixed(4) }}</template>
+          </span>
           <button
             v-if="chatStore.isStreaming"
             class="action-btn stop"
@@ -257,6 +273,24 @@ function selectMention(skill: SkillDefinition) {
 
 function unmountSkill(name: string) {
   mountedSkills.value = mountedSkills.value.filter((item) => item !== name)
+}
+
+// 工具栏 @ 按钮入口：在光标处插入 @ 并打开技能选择弹层
+function openMentionPicker() {
+  if (disabled.value) return
+  inputText.value = inputText.value ? `${inputText.value.replace(/\s+$/, '')} @` : '@'
+  nextTick(() => {
+    const el = textareaEl.value
+    if (!el) return
+    el.focus()
+    const pos = inputText.value.length
+    el.setSelectionRange(pos, pos)
+    mentionState.anchor = inputText.value.length - 1
+    mentionState.query = ''
+    mentionState.filtered = availableSkills.value.slice(0, 8)
+    mentionState.open = mentionState.filtered.length > 0
+    autoResize()
+  })
 }
 
 async function send() {
@@ -486,6 +520,46 @@ function autoResize() {
 
 .action-spacer {
   flex: 1;
+}
+
+/* 工具栏左侧的当前智能体胶囊 */
+.agent-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.agent-pill:hover {
+  border-color: #cfc5b7;
+  color: var(--text-primary);
+}
+
+.agent-pill-name {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+/* 工具栏右侧的会话用量紧凑徽标 */
+.toolbar-usage {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  padding: 3px 8px;
+  border-radius: 999px;
+  user-select: none;
+  white-space: nowrap;
 }
 
 .utility-btn {
