@@ -85,20 +85,19 @@
           <div
             v-if="sessionUsage.inputTokens || sessionUsage.outputTokens"
             class="session-usage"
-            title="本会话累计：↑ 输入 token · ↓ 输出 token · ⚡ 缓存命中 · $ 成本估算"
+            title="本会话累计：输入 token · 输出 token · 缓存命中 · 成本估算（美元）"
           >
             <span class="session-usage-total">
-              <i class="pi pi-coins" style="font-size: 0.62rem;"></i>
               {{ formatTokens(sessionUsage.inputTokens + sessionUsage.outputTokens) }} tokens
             </span>
             <span class="session-usage-sep">·</span>
-            <span class="session-usage-detail">↑ {{ formatTokens(sessionUsage.inputTokens) }}</span>
-            <span class="session-usage-detail">↓ {{ formatTokens(sessionUsage.outputTokens) }}</span>
+            <span class="session-usage-detail">输入 {{ formatTokens(sessionUsage.inputTokens) }}</span>
+            <span class="session-usage-detail">输出 {{ formatTokens(sessionUsage.outputTokens) }}</span>
             <span v-if="sessionUsage.cachedTokens" class="session-usage-cache" title="缓存命中输入 token">
-              ⚡ {{ formatTokens(sessionUsage.cachedTokens) }}
+              缓存命中 {{ formatTokens(sessionUsage.cachedTokens) }}
             </span>
             <span v-if="sessionUsage.costUsd" class="session-usage-cost" title="成本估算（美元）">
-              ${{ sessionUsage.costUsd.toFixed(4) }}
+              成本 ${{ sessionUsage.costUsd.toFixed(4) }}
             </span>
           </div>
         </div>
@@ -576,9 +575,6 @@ function autoResize() {
 }
 
 .session-usage-total {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
   color: var(--text-secondary);
   font-weight: 600;
 }

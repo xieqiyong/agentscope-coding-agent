@@ -102,21 +102,21 @@
         class="usage-bar"
         title="本次回答的 token 用量：↑ 输入 · ↓ 输出 · ⚡ 缓存命中 · $ 成本估算"
       >
-        <span class="usage-chip">
-          <i class="pi pi-arrow-up-right"></i>
+        <span class="usage-chip" title="输入 token">
+          <span class="usage-label">输入</span>
           <span class="usage-value">{{ formatTokens(message.usage.inputTokens) }}</span>
         </span>
-        <span class="usage-chip">
-          <i class="pi pi-arrow-down-right"></i>
+        <span class="usage-chip" title="输出 token">
+          <span class="usage-label">输出</span>
           <span class="usage-value">{{ formatTokens(message.usage.outputTokens) }}</span>
         </span>
-        <span v-if="message.usage.cachedTokens" class="usage-chip cache">
-          <i class="pi pi-bolt"></i>
+        <span v-if="message.usage.cachedTokens" class="usage-chip cache" title="缓存命中输入 token">
+          <span class="usage-label">缓存命中</span>
           <span class="usage-value">{{ formatTokens(message.usage.cachedTokens) }}</span>
         </span>
-        <span v-if="message.usage.costUsd" class="usage-chip cost">
-          <i class="pi pi-dollar"></i>
-          <span class="usage-value">{{ message.usage.costUsd.toFixed(4) }}</span>
+        <span v-if="message.usage.costUsd" class="usage-chip cost" title="成本估算（美元）">
+          <span class="usage-label">成本</span>
+          <span class="usage-value">${{ message.usage.costUsd.toFixed(4) }}</span>
         </span>
       </div>
 
@@ -981,8 +981,18 @@ function isCommandTool(toolName: string): boolean {
   user-select: none;
 }
 
-.usage-chip .pi {
-  font-size: 0.58rem;
+.usage-label {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.usage-chip.cache .usage-label {
+  color: var(--accent);
+}
+
+.usage-chip.cost .usage-label {
+  color: var(--bg-main);
+  opacity: 0.8;
 }
 
 .usage-value {
