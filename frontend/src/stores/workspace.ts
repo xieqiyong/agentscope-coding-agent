@@ -49,7 +49,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     loading.value = true
     error.value = null
     try {
-      const res: any = await workspaceApi.create(data)
+      // 带上当前工作区 id，后端会把现有智能体克隆到新工作区，避免换目录后配置丢失
+      const fromWorkspaceId = currentWorkspace.value?.id
+      const res: any = await workspaceApi.create({ ...data, fromWorkspaceId })
       const newWorkspace = res.data
       workspaces.value.push(newWorkspace)
       currentWorkspace.value = newWorkspace

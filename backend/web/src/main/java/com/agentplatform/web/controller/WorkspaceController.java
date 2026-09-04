@@ -5,6 +5,7 @@ import com.agentplatform.persistence.entity.WorkspaceEntity;
 import com.agentplatform.workspace.service.WorkspaceService;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.Map;
@@ -15,6 +16,10 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/workspaces")
 public class WorkspaceController {
+
+    @Resource
+    private com.agentplatform.runtime.service.AgentDefinitionService agentDefinitionService;
+
 
     @Resource
     private WorkspaceService workspaceService;
@@ -37,7 +42,26 @@ public class WorkspaceController {
                 body.get("description"),
                 body.get("ownerId")
         );
+        // 注册新工作区时把当前工作区的智能体配置克隆过来，避免用户换目录后智能体“消失”
+        if (entity != null && StringUtils.hasText(body.get("fromWorkspaceId"))) {
+            try {
+                agentDefinitionService.cloneWorkspaceAgents(parseLong(body.get("fromWorkspaceId")), entity.getId());
+            } catch (Exception ignored) {
+                // 克隆失败不影响注册结果；首次拉取列表时会兜底创建默认智能体
+            }
+        }
         return ApiResponse.success(entity);
+    }
+
+    private Long parseLong(Object value) {
+        if (value == null || String.valueOf(value).isBlank()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(String.valueOf(value));
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     @PostMapping("/browse-directories")

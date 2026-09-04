@@ -102,6 +102,38 @@ public class AgentDefinitionService {
         return agentRepository.save(entity);
     }
 
+    /**
+     * 把源工作区的智能体配置克隆到新工作区。
+     * 中文注释：注册新工作区时用户期望原有智能体跟着可用，这里复制配置而不是移动，源工作区不受影响。
+     */
+    @Transactional
+    public int cloneWorkspaceAgents(Long fromWorkspaceId, Long toWorkspaceId) {
+        if (fromWorkspaceId == null || toWorkspaceId == null || fromWorkspaceId.equals(toWorkspaceId)) {
+            return 0;
+        }
+        if (!workspaceRepository.existsById(fromWorkspaceId) || !workspaceRepository.existsById(toWorkspaceId)) {
+            return 0;
+        }
+        List<AgentEntity> sources = agentRepository.findByWorkspaceIdAndStatusOrderByCreatedAtDesc(fromWorkspaceId, "ENABLED");
+        int cloned = 0;
+        for (AgentEntity source : sources) {
+            AgentEntity copy = new AgentEntity();
+            copy.setWorkspaceId(toWorkspaceId);
+            copy.setName(source.getName());
+            copy.setDescription(source.getDescription());
+            copy.setSystemPrompt(source.getSystemPrompt());
+            copy.setSkillsJson(source.getSkillsJson());
+            copy.setMcpServicesJson(source.getMcpServicesJson());
+            copy.setModelConfigId(source.getModelConfigId());
+            copy.setMaxIterations(source.getMaxIterations());
+            copy.setTimeoutSeconds(source.getTimeoutSeconds());
+            copy.setStatus("ENABLED");
+            agentRepository.save(copy);
+            cloned++;
+        }
+        return cloned;
+    }
+
     private void validateWorkspace(Long workspaceId) {
         if (workspaceId == null) {
             throw new BusinessException(400, "工作区 ID 不能为空");

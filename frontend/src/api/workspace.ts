@@ -6,7 +6,7 @@ export const workspaceApi = {
 
   getById: (id: string): Promise<any> => api.get(`/workspaces/${id}`),
 
-  create: (data: { name: string; rootPath: string; description?: string }): Promise<any> =>
+  create: (data: { name: string; rootPath: string; description?: string; fromWorkspaceId?: string | number }): Promise<any> =>
     api.post('/workspaces', data),
 
   browseDirectories: (data: { path?: string | null }): Promise<any> =>

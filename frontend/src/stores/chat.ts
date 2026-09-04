@@ -1,7 +1,7 @@
 ﻿import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { chatApi } from '@/api/chat'
-import type { Session, ChatMessage, ToolCallInfo, Confirmation, PatchFile, PlanInfo, PlanStep } from '@/types'
+import type { Session, ChatMessage, ToolCallInfo, Confirmation, PatchFile, PlanInfo, PlanStep, ThinkingInfo, MessageUsage } from '@/types'
 import type { RuntimeEvent, RuntimeEventType } from '@/types/events'
 
 const STORAGE_CONVERSATION_ID = 'coding-agent-current-conversation-id'
@@ -1177,7 +1177,37 @@ export const useChatStore = defineStore('chat', () => {
       timestamp: row.createdAt || row.updatedAt || new Date().toISOString(),
       toolCalls: normalizeBackendToolCalls(row.toolCalls),
       plan,
+      // 刷新后从 timeline 重建的思考内容与 token 用量
+      thinking: normalizeBackendThinking(row.thinking),
+      usage: normalizeBackendUsage(row.usage),
     }
+  }
+
+  function normalizeBackendThinking(value: unknown): ThinkingInfo | undefined {
+    if (!value || typeof value !== 'object') return undefined
+    const raw = value as Record<string, unknown>
+    const content = typeof raw.content === 'string' ? raw.content : ''
+    if (!content) return undefined
+    return {
+      status: 'done',
+      content,
+      chars: typeof raw.chars === 'number' ? raw.chars : content.length,
+      startedAt: typeof raw.startedAt === 'number' ? raw.startedAt : undefined,
+      durationMs: typeof raw.durationMs === 'number' ? raw.durationMs : undefined,
+    }
+  }
+
+  function normalizeBackendUsage(value: unknown): MessageUsage | undefined {
+    if (!value || typeof value !== 'object') return undefined
+    const raw = value as Record<string, unknown>
+    const usage: MessageUsage = {
+      inputTokens: Number(raw.inputTokens) || 0,
+      outputTokens: Number(raw.outputTokens) || 0,
+      cachedTokens: Number(raw.cachedTokens) || 0,
+    }
+    if (!usage.inputTokens && !usage.outputTokens) return undefined
+    if (raw.costUsd != null && Number(raw.costUsd) > 0) usage.costUsd = Number(raw.costUsd)
+    return usage
   }
 
   function inferMessageKind(role: 'user' | 'assistant', content: string): ChatMessage['messageKind'] | undefined {

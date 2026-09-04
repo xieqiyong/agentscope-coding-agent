@@ -119,6 +119,8 @@ public class SessionController {
             attachToolCalls(timeline, run, rebuildToolCalls(run.getId()));
             attachPlan(timeline, run, rebuildPlan(run.getId()));
             attachPlanStepStatuses(timeline, run, rebuildPlanStepStatuses(run.getId()));
+            attachUsage(timeline, run);
+            attachThinking(timeline, run, rebuildThinking(run.getId()));
         }
         return ApiResponse.success(timeline);
     }
@@ -279,6 +281,94 @@ public class SessionController {
             }
         }
         planMessage.put("plan", plan);
+    }
+
+    /**
+     * 中文注释：把 run 表里落库的 token 用量与成本附到该次回答对应的助手消息上，刷新后统计不丢。
+     */
+    private void attachUsage(List<Map<String, Object>> timeline, AgentRunEntity run) {
+        Map<String, Object> usage = new LinkedHashMap<>();
+        usage.put("inputTokens", run.getInputTokens() == null ? 0 : run.getInputTokens());
+        usage.put("outputTokens", run.getOutputTokens() == null ? 0 : run.getOutputTokens());
+        usage.put("cachedTokens", run.getCachedTokens() == null ? 0 : run.getCachedTokens());
+        if (run.getCostUsd() != null && run.getCostUsd().doubleValue() > 0) {
+            usage.put("costUsd", run.getCostUsd().doubleValue());
+        }
+        if (usage.get("inputTokens").equals(0) && usage.get("outputTokens").equals(0)) {
+            return;
+        }
+        Map<String, Object> assistant = findAssistantAfterUserMessage(timeline, run);
+        if (assistant != null) {
+            assistant.put("usage", usage);
+        }
+    }
+
+    /**
+     * 中文注释：从事件流重建思考内容并附到助手消息，刷新后"思考"折叠区不消失。
+     */
+    private void attachThinking(List<Map<String, Object>> timeline, AgentRunEntity run, Map<String, Object> thinking) {
+        if (thinking == null || thinking.isEmpty()) {
+            return;
+        }
+        Map<String, Object> assistant = findAssistantAfterUserMessage(timeline, run);
+        if (assistant != null && !assistant.containsKey("thinking")) {
+            assistant.put("thinking", thinking);
+        }
+    }
+
+    /**
+     * 重建思考内容：拼接本次 run 主回答的 THINKING_DELTA 文本（多 Agent 节点的思考带 taskNodeId，跳过）。
+     */
+    private Map<String, Object> rebuildThinking(Long runId) {
+        List<AgentEventEntity> events = agentEventRepository.findByRunIdOrderByIdAsc(runId);
+        StringBuilder content = new StringBuilder();
+        Long startedElapsed = null;
+        Long finishedElapsed = null;
+        for (AgentEventEntity event : events) {
+            String type = event.getEventType();
+            if (!type.startsWith("THINKING_")) {
+                continue;
+            }
+            Map<String, Object> metadata = parseMetadata(event.getMetadataJson());
+            if (StringUtils.hasText(firstString(metadata.get("taskNodeId"), metadata.get("stepId")))) {
+                continue;
+            }
+            if ("THINKING_STARTED".equals(type) && startedElapsed == null) {
+                startedElapsed = event.getElapsedMs();
+            }
+            if ("THINKING_DELTA".equals(type) && StringUtils.hasText(event.getContent())) {
+                content.append(event.getContent());
+            }
+            if ("THINKING_FINISHED".equals(type)) {
+                finishedElapsed = event.getElapsedMs();
+            }
+        }
+        if (content.isEmpty()) {
+            return null;
+        }
+        Map<String, Object> thinking = new LinkedHashMap<>();
+        thinking.put("status", "done");
+        thinking.put("content", content.toString());
+        thinking.put("chars", content.length());
+        if (startedElapsed != null && finishedElapsed != null && finishedElapsed > startedElapsed) {
+            thinking.put("startedAt", startedElapsed);
+            thinking.put("durationMs", finishedElapsed - startedElapsed);
+        }
+        return thinking;
+    }
+
+    /**
+     * 定位 run 触发消息之后的第一条助手消息（toolCalls/plan/usage/thinking 共用的挂载点）。
+     */
+    private Map<String, Object> findAssistantAfterUserMessage(List<Map<String, Object>> timeline, AgentRunEntity run) {
+        int userIndex = findUserMessageIndex(timeline, run);
+        for (int i = Math.max(0, userIndex + 1); i < timeline.size(); i++) {
+            Map<String, Object> message = timeline.get(i);
+            if ("assistant".equals(message.get("role"))) {
+                return message;
+            }
+        }
+        return null;
     }
 
     private Map<String, Object> rebuildPlan(Long runId) {
