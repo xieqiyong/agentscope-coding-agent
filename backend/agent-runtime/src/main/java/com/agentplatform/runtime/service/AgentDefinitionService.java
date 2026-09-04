@@ -3,7 +3,6 @@ package com.agentplatform.runtime.service;
 import com.agentplatform.common.exception.BusinessException;
 import com.agentplatform.persistence.entity.AgentEntity;
 import com.agentplatform.persistence.repository.AgentRepository;
-import com.agentplatform.persistence.repository.WorkspaceRepository;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,37 +20,31 @@ public class AgentDefinitionService {
     @Resource
     private AgentRepository agentRepository;
 
-    @Resource
-    private WorkspaceRepository workspaceRepository;
-
     /**
-     * 查询工作区下可用 Agent；为空时创建默认 Coding Agent，保证聊天页有可选项。
+     * 查询全局可用 Agent；为空时创建默认 Coding Agent，保证聊天页有可选项。
      */
     @Transactional
-    public List<AgentEntity> listOrCreateDefault(Long workspaceId) {
-        validateWorkspace(workspaceId);
-        List<AgentEntity> agents = agentRepository.findByWorkspaceIdAndStatusOrderByCreatedAtDesc(workspaceId, "ENABLED");
+    public List<AgentEntity> listOrCreateDefault() {
+        List<AgentEntity> agents = agentRepository.findByStatusOrderByCreatedAtDesc("ENABLED");
         if (!agents.isEmpty()) {
             return agents;
         }
-        createDefaultAgent(workspaceId);
-        return agentRepository.findByWorkspaceIdAndStatusOrderByCreatedAtDesc(workspaceId, "ENABLED");
+        createDefaultAgent();
+        return agentRepository.findByStatusOrderByCreatedAtDesc("ENABLED");
     }
 
     /**
      * 创建自定义 Agent。
      */
     @Transactional
-    public AgentEntity create(Long workspaceId, String name, String description, String systemPrompt,
+    public AgentEntity create(String name, String description, String systemPrompt,
                               String skillsJson, String mcpServicesJson, Integer maxIterations,
                               Integer timeoutSeconds, Long modelConfigId) {
-        validateWorkspace(workspaceId);
         if (!StringUtils.hasText(name)) {
             throw new BusinessException(400, "智能体名称不能为空");
         }
 
         AgentEntity entity = new AgentEntity();
-        entity.setWorkspaceId(workspaceId);
         entity.setName(name.trim());
         entity.setDescription(description);
         entity.setSystemPrompt(systemPrompt);
@@ -102,50 +95,8 @@ public class AgentDefinitionService {
         return agentRepository.save(entity);
     }
 
-    /**
-     * 把源工作区的智能体配置克隆到新工作区。
-     * 中文注释：注册新工作区时用户期望原有智能体跟着可用，这里复制配置而不是移动，源工作区不受影响。
-     */
-    @Transactional
-    public int cloneWorkspaceAgents(Long fromWorkspaceId, Long toWorkspaceId) {
-        if (fromWorkspaceId == null || toWorkspaceId == null || fromWorkspaceId.equals(toWorkspaceId)) {
-            return 0;
-        }
-        if (!workspaceRepository.existsById(fromWorkspaceId) || !workspaceRepository.existsById(toWorkspaceId)) {
-            return 0;
-        }
-        List<AgentEntity> sources = agentRepository.findByWorkspaceIdAndStatusOrderByCreatedAtDesc(fromWorkspaceId, "ENABLED");
-        int cloned = 0;
-        for (AgentEntity source : sources) {
-            AgentEntity copy = new AgentEntity();
-            copy.setWorkspaceId(toWorkspaceId);
-            copy.setName(source.getName());
-            copy.setDescription(source.getDescription());
-            copy.setSystemPrompt(source.getSystemPrompt());
-            copy.setSkillsJson(source.getSkillsJson());
-            copy.setMcpServicesJson(source.getMcpServicesJson());
-            copy.setModelConfigId(source.getModelConfigId());
-            copy.setMaxIterations(source.getMaxIterations());
-            copy.setTimeoutSeconds(source.getTimeoutSeconds());
-            copy.setStatus("ENABLED");
-            agentRepository.save(copy);
-            cloned++;
-        }
-        return cloned;
-    }
-
-    private void validateWorkspace(Long workspaceId) {
-        if (workspaceId == null) {
-            throw new BusinessException(400, "工作区 ID 不能为空");
-        }
-        if (!workspaceRepository.existsById(workspaceId)) {
-            throw new BusinessException(404, "工作区不存在");
-        }
-    }
-
-    private AgentEntity createDefaultAgent(Long workspaceId) {
+    private AgentEntity createDefaultAgent() {
         AgentEntity entity = new AgentEntity();
-        entity.setWorkspaceId(workspaceId);
         entity.setName("Coding Agent");
         entity.setDescription("默认编码智能体，适合读取项目、搜索代码、提出修改方案。");
         entity.setSystemPrompt("你是一个严谨的 Coding Agent。回答项目问题前要先读取和搜索工作区证据，修改代码时做最小改动。");

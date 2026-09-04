@@ -15,15 +15,12 @@
     <main class="agents-layout">
       <section class="agent-list-panel">
         <div class="panel-title">
-          <span>{{ workspaceStore.currentWorkspace?.name || '未选择工作区' }}</span>
+          <span>全局智能体</span>
           <Button icon="pi pi-refresh" text size="small" :loading="agentStore.loading" @click="reloadAgents" />
         </div>
 
-        <div v-if="!workspaceStore.currentWorkspace" class="empty-state">
-          先回到聊天页选择或注册工作区。
-        </div>
-        <div v-else-if="agentStore.agents.length === 0" class="empty-state">
-          当前工作区还没有 Agent。
+        <div v-if="agentStore.agents.length === 0" class="empty-state">
+          还没有 Agent。
         </div>
         <button
           v-for="agent in agentStore.agents"
@@ -206,15 +203,6 @@ const registeredMcpOptions = computed(() =>
 )
 
 onMounted(async () => {
-  if (!workspaceStore.currentWorkspace) {
-    await workspaceStore.fetchWorkspaces()
-    const restoredId = workspaceStore.restoreWorkspaceId()
-    const workspace = workspaceStore.workspaces.find((item) => String(item.id) === String(restoredId))
-      || workspaceStore.workspaces[0]
-    if (workspace) {
-      await workspaceStore.selectWorkspace(workspace.id)
-    }
-  }
   await reloadToolDefinitions()
   await loadModelConfigs()
   await reloadAgents()
@@ -239,8 +227,7 @@ async function reloadToolDefinitions() {
 }
 
 async function reloadAgents() {
-  if (!workspaceStore.currentWorkspace) return
-  await agentStore.fetchAgents(workspaceStore.currentWorkspace.id)
+  await agentStore.fetchAgents()
   if (agentStore.currentAgent) {
     loadAgent(agentStore.currentAgent)
   }
@@ -292,11 +279,9 @@ function addMcpService() {
 }
 
 async function saveAgent() {
-  if (!workspaceStore.currentWorkspace) return
   saving.value = true
   try {
     const payload = {
-      workspaceId: workspaceStore.currentWorkspace.id,
       name: form.name,
       description: form.description,
       systemPrompt: form.systemPrompt,

@@ -23,14 +23,14 @@ public class AgentController {
     private AgentDefinitionService agentDefinitionService;
 
     @PostMapping("/list")
-    public ApiResponse<List<AgentEntity>> list(@RequestBody Map<String, Object> body) {
-        return ApiResponse.success(agentDefinitionService.listOrCreateDefault(parseLong(body.get("workspaceId"))));
+    public ApiResponse<List<AgentEntity>> list(@RequestBody(required = false) Map<String, Object> body) {
+        // 智能体是全局资源，不再按工作区过滤；兼容旧前端仍传 workspaceId 的情况直接忽略
+        return ApiResponse.success(agentDefinitionService.listOrCreateDefault());
     }
 
     @PostMapping("/create")
     public ApiResponse<AgentEntity> create(@RequestBody Map<String, Object> body) {
         AgentEntity entity = agentDefinitionService.create(
-                parseLong(body.get("workspaceId")),
                 text(body.get("name")),
                 text(body.get("description")),
                 text(body.get("systemPrompt")),

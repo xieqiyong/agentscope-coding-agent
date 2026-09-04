@@ -62,7 +62,10 @@ watch(
   () => workspaceStore.currentWorkspace?.id,
   async (newId, oldId) => {
     if (!newId || String(newId) === String(oldId || '')) return
-    await agentStore.fetchAgents(newId)
+    // 智能体是全局资源，首次切换时拉取一次即可
+    if (!agentStore.agents.length) {
+      await agentStore.fetchAgents()
+    }
     await chatStore.fetchSessions(newId)
     await restoreConversation()
   },

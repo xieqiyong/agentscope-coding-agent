@@ -18,11 +18,11 @@ export const useAgentStore = defineStore('agent', () => {
     })),
   )
 
-  async function fetchAgents(workspaceId: string) {
+  async function fetchAgents() {
     loading.value = true
     error.value = null
     try {
-      const res: any = await agentApi.list(workspaceId)
+      const res: any = await agentApi.list()
       agents.value = normalizeAgents(res.data || [])
       restoreOrSelectFirst()
     } catch (e: any) {
@@ -42,7 +42,7 @@ export const useAgentStore = defineStore('agent', () => {
     localStorage.setItem(STORAGE_AGENT_ID, String(found.id))
   }
 
-  async function createAgent(data: Partial<AgentDefinition> & { workspaceId: string; name: string }) {
+  async function createAgent(data: Partial<AgentDefinition> & { name: string }) {
     const res: any = await agentApi.create(data)
     const agent = normalizeAgent(res.data)
     agents.value.unshift(agent)

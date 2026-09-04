@@ -102,10 +102,6 @@ public class AgentRunContextBuilder {
         if (agent == null || !"ENABLED".equalsIgnoreCase(agent.getStatus())) {
             return false;
         }
-        if (context.getWorkspace() != null && !context.getWorkspace().getId().equals(agent.getWorkspaceId())) {
-            return false;
-        }
-
         ModelConfigEntity modelConfig = resolveModelConfig(agent);
         context.setAgent(agent);
         context.setModelConfig(modelConfig);

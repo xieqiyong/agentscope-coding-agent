@@ -18,9 +18,9 @@ import lombok.Setter;
 public class AgentEntity extends BaseEntity {
 
     /**
-     * 所属工作区 ID
+     * 历史保留字段：智能体现在是全局资源，不再绑定工作区；新记录该列为空。
      */
-    @Column(name = "workspace_id", nullable = false)
+    @Column(name = "workspace_id", nullable = true)
     private Long workspaceId;
     /**
      * Agent 名称

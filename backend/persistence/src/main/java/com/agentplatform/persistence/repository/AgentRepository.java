@@ -15,4 +15,7 @@ public interface AgentRepository extends JpaRepository<AgentEntity, Long> {
     List<AgentEntity> findByWorkspaceIdOrderByCreatedAtDesc(Long workspaceId);
 
     List<AgentEntity> findByWorkspaceIdAndStatusOrderByCreatedAtDesc(Long workspaceId, String status);
+
+    /** 全局按状态查询智能体：智能体不再绑定工作区 */
+    List<AgentEntity> findByStatusOrderByCreatedAtDesc(String status);
 }
