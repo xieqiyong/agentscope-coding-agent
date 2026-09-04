@@ -46,6 +46,19 @@ import java.util.Map;
 @Component
 public class AgentScopeRuntimeAdapter {
 
+    /**
+     * 上下文压缩触发阈值（估算 token），可通过 agent.runtime.context-compression.threshold-tokens 配置。
+     */
+    @org.springframework.beans.factory.annotation.Value("${agent.runtime.context-compression.threshold-tokens:16000}")
+    private int compressionThresholdTokens;
+
+    /**
+     * 压缩时保留最近的消息条数。
+     */
+    @org.springframework.beans.factory.annotation.Value("${agent.runtime.context-compression.keep-recent-messages:8}")
+    private int compressionKeepRecentMessages;
+
+
     @Resource
     private SandboxPathResolver sandboxPathResolver;
 
@@ -184,7 +197,9 @@ public class AgentScopeRuntimeAdapter {
                 .model(buildModel(context))
                 .toolkit(buildToolkit(context))
                 .permissionContext(permissionContext)
-                .maxIters(context.getMaxIterations());
+                .maxIters(context.getMaxIterations())
+                // 上下文压缩中间件：ReAct 多轮后输入超过阈值时把较早历史压缩成摘要，控制 token 增长
+                .middleware(new ContextCompressionMiddleware(compressionThresholdTokens, compressionKeepRecentMessages));
 
         if (sessionBinding.isEnabled()) {
             agentBuilder.stateStore(sessionBinding.getStateStore())

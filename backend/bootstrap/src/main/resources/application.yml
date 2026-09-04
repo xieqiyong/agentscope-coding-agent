@@ -37,6 +37,10 @@ agent:
     # 导入的 Agent Skills zip 包解压存放目录
     store-dir: data/skills
   runtime:
+    # 上下文压缩：ReAct 多轮累计输入超过阈值时，把较早历史用同模型压缩成摘要再送入
+    context-compression:
+      threshold-tokens: 16000
+      keep-recent-messages: 8
     multi-agent:
       # 单张任务图的并行节点上限；所有任务图共享一个有界工作线程池。
       max-concurrency: 4
