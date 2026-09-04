@@ -50,7 +50,10 @@ public class ModelConfigService {
      */
     @Transactional
     public ModelConfigEntity create(String name, String provider, String baseUrl,
-                                    String modelName, String apiKey) {
+                                    String modelName, String apiKey,
+                                    java.math.BigDecimal inputPrice,
+                                    java.math.BigDecimal cachedInputPrice,
+                                    java.math.BigDecimal outputPrice) {
         validateParams(name, provider, baseUrl, modelName);
 
         ModelConfigEntity entity = new ModelConfigEntity();
@@ -60,7 +63,12 @@ public class ModelConfigService {
         entity.setModelName(modelName);
         setApiKey(entity, apiKey);
         entity.setDefaultConfig(false);
+        applyPrices(entity, inputPrice, cachedInputPrice, outputPrice);
         return modelConfigRepository.save(entity);
+    }
+
+    public ModelConfigEntity create(String name, String provider, String baseUrl, String modelName, String apiKey) {
+        return create(name, provider, baseUrl, modelName, apiKey, null, null, null);
     }
 
     /**
@@ -68,14 +76,32 @@ public class ModelConfigService {
      */
     @Transactional
     public ModelConfigEntity update(Long id, String name, String provider, String baseUrl,
-                                    String modelName, String apiKey) {
+                                    String modelName, String apiKey,
+                                    java.math.BigDecimal inputPrice,
+                                    java.math.BigDecimal cachedInputPrice,
+                                    java.math.BigDecimal outputPrice) {
         ModelConfigEntity entity = getById(id);
         if (StringUtils.hasText(name)) entity.setName(name);
         if (StringUtils.hasText(provider)) entity.setProvider(provider);
         if (StringUtils.hasText(baseUrl)) entity.setBaseUrl(baseUrl);
         if (StringUtils.hasText(modelName)) entity.setModelName(modelName);
         if (StringUtils.hasText(apiKey)) setApiKey(entity, apiKey);
+        applyPrices(entity, inputPrice, cachedInputPrice, outputPrice);
         return modelConfigRepository.save(entity);
+    }
+
+    public ModelConfigEntity update(Long id, String name, String provider, String baseUrl, String modelName, String apiKey) {
+        return update(id, name, provider, baseUrl, modelName, apiKey, null, null, null);
+    }
+
+    /**
+     * 更新模型单价（美元 / 百万 token）；传 null 表示不修改该字段。
+     */
+    private void applyPrices(ModelConfigEntity entity, java.math.BigDecimal inputPrice,
+                             java.math.BigDecimal cachedInputPrice, java.math.BigDecimal outputPrice) {
+        if (inputPrice != null) entity.setInputPrice(inputPrice);
+        if (cachedInputPrice != null) entity.setCachedInputPrice(cachedInputPrice);
+        if (outputPrice != null) entity.setOutputPrice(outputPrice);
     }
 
     /**

@@ -68,6 +68,18 @@
         <label>{{ editingId ? 'API 密钥（留空不修改）' : 'API 密钥' }}</label>
         <InputText v-model="form.apiKey" class="w-full" type="password" placeholder="sk-..." />
       </div>
+      <div class="form-group">
+        <label>输入单价（美元 / 百万 token，选填）</label>
+        <InputText v-model="form.inputPrice" class="w-full" placeholder="例如：2.50" />
+      </div>
+      <div class="form-group">
+        <label>缓存命中输入单价（美元 / 百万 token，选填）</label>
+        <InputText v-model="form.cachedInputPrice" class="w-full" placeholder="例如：0.30" />
+      </div>
+      <div class="form-group">
+        <label>输出单价（美元 / 百万 token，选填）</label>
+        <InputText v-model="form.outputPrice" class="w-full" placeholder="例如：10.00" />
+      </div>
       <template #footer>
         <Button label="测试连接" icon="pi pi-bolt" text :loading="dialogTesting" @click="testFromDialog" />
         <Button label="取消" text @click="showDialog = false" />
@@ -107,6 +119,9 @@ const form = reactive({
   baseUrl: '',
   modelName: '',
   apiKey: '',
+  inputPrice: '',
+  cachedInputPrice: '',
+  outputPrice: '',
 })
 
 const providerOptions = [
@@ -141,6 +156,9 @@ function openCreateDialog() {
   form.baseUrl = ''
   form.modelName = ''
   form.apiKey = ''
+  form.inputPrice = ''
+  form.cachedInputPrice = ''
+  form.outputPrice = ''
   showDialog.value = true
 }
 
@@ -151,6 +169,9 @@ function openEditDialog(cfg: ModelConfig) {
   form.baseUrl = cfg.baseUrl
   form.modelName = cfg.modelName
   form.apiKey = ''
+  form.inputPrice = cfg.inputPrice == null ? '' : String(cfg.inputPrice)
+  form.cachedInputPrice = cfg.cachedInputPrice == null ? '' : String(cfg.cachedInputPrice)
+  form.outputPrice = cfg.outputPrice == null ? '' : String(cfg.outputPrice)
   showDialog.value = true
 }
 
@@ -165,6 +186,10 @@ async function save() {
         modelName: form.modelName,
       }
       if (form.apiKey) data.apiKey = form.apiKey
+      // 单价：留空不修改；填了就传字符串，后端按十进制解析
+      if (form.inputPrice.trim()) data.inputPrice = form.inputPrice.trim()
+      if (form.cachedInputPrice.trim()) data.cachedInputPrice = form.cachedInputPrice.trim()
+      if (form.outputPrice.trim()) data.outputPrice = form.outputPrice.trim()
       await modelConfigApi.update(editingId.value, data)
       toast.add({ severity: 'success', summary: '已更新', life: 2000 })
     } else {
@@ -174,6 +199,9 @@ async function save() {
         baseUrl: form.baseUrl,
         modelName: form.modelName,
         apiKey: form.apiKey,
+        inputPrice: form.inputPrice.trim() || undefined,
+        cachedInputPrice: form.cachedInputPrice.trim() || undefined,
+        outputPrice: form.outputPrice.trim() || undefined,
       })
       toast.add({ severity: 'success', summary: '已添加', life: 2000 })
     }

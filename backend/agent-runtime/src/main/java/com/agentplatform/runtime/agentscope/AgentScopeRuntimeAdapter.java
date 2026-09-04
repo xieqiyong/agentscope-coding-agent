@@ -21,7 +21,7 @@ import io.agentscope.core.event.ConfirmResult;
 import io.agentscope.core.message.AssistantMessage;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.UserMessage;
-import io.agentscope.core.model.OpenAIChatModel;
+import io.agentscope.extensions.model.openai.OpenAIChatModel;
 import io.agentscope.core.permission.PermissionContextState;
 import io.agentscope.core.permission.PermissionRule;
 import io.agentscope.core.tool.ToolSuspendException;
@@ -301,6 +301,8 @@ public class AgentScopeRuntimeAdapter {
         result.setAnswer(recorder.answer());
         result.setInputTokens(recorder.inputTokensOrEstimate(inputText));
         result.setOutputTokens(recorder.outputTokensOrEstimate(recorder.answer()));
+        result.setCachedTokens(recorder.cachedTokens());
+        result.setCostUsd(recorder.costUsd());
         result.setModelCallCount(recorder.getModelCallCount());
         result.setStatus("COMPLETED");
         return result;

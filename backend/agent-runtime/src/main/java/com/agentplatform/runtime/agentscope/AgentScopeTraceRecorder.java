@@ -28,6 +28,9 @@ class AgentScopeTraceRecorder {
     private int modelCallCount;
     private int inputTokens;
     private int outputTokens;
+    // 缓存命中输入 token 与按模型单价累计的成本（美元）
+    private int cachedTokens;
+    private double costUsd;
     private boolean confirmationRequired;
 
     AgentScopeTraceRecorder(RuntimeContext context, RuntimeEventSink sink) {
@@ -108,12 +111,43 @@ class AgentScopeTraceRecorder {
         return outputTokens > 0 ? outputTokens : estimateTokens(output);
     }
 
+    int cachedTokens() {
+        return cachedTokens;
+    }
+
+    double costUsd() {
+        return costUsd;
+    }
+
     private void addUsage(ChatUsage usage) {
         if (usage == null) {
             return;
         }
         inputTokens += usage.getInputTokens();
         outputTokens += usage.getOutputTokens();
+        cachedTokens += usage.getCachedTokens();
+        costUsd += computeCallCost(usage);
+    }
+
+    /**
+     * 按当前上下文绑定的模型单价计算单次调用成本。
+     * 中文注释：多 Agent 编排会在节点间切换模型，必须逐次按当时的 modelConfig 计价，不能结束后统一算。
+     */
+    private double computeCallCost(ChatUsage usage) {
+        com.agentplatform.persistence.entity.ModelConfigEntity modelConfig = context.getModelConfig();
+        if (modelConfig == null) {
+            return 0;
+        }
+        double inputPart = price(modelConfig.getInputPrice()) * usage.getInputTokens();
+        // 缓存命中的输入按缓存价计费，剩余部分按原价计费
+        double cachedPart = price(modelConfig.getCachedInputPrice()) * usage.getCachedTokens();
+        double inputFullPart = price(modelConfig.getInputPrice()) * usage.getCachedTokens();
+        double outputPart = price(modelConfig.getOutputPrice()) * usage.getOutputTokens();
+        return (inputPart - inputFullPart + cachedPart + outputPart) / 1_000_000d;
+    }
+
+    private double price(java.math.BigDecimal value) {
+        return value == null ? 0d : value.doubleValue();
     }
 
     private int estimateTokens(String text) {

@@ -34,6 +34,8 @@ public class AgentRunLifecycleService {
         run.setStatus(AgentRunStatus.RUNNING.name());
         run.setInputTokens(0);
         run.setOutputTokens(0);
+        run.setCachedTokens(0);
+        run.setCostUsd(java.math.BigDecimal.ZERO);
         run.setStartedAt(LocalDateTime.now());
         return agentRunRepository.save(run);
     }
@@ -93,6 +95,8 @@ public class AgentRunLifecycleService {
         if (result != null) {
             run.setInputTokens(result.getInputTokens());
             run.setOutputTokens(result.getOutputTokens());
+            run.setCachedTokens(result.getCachedTokens());
+            run.setCostUsd(java.math.BigDecimal.valueOf(result.getCostUsd()));
         }
     }
 }

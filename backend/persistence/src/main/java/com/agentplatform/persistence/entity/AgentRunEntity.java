@@ -65,6 +65,16 @@ public class AgentRunEntity extends BaseEntity {
     @Column(name = "output_tokens", nullable = false)
     private Integer outputTokens;
     /**
+     * 缓存命中输入 token（模型网关返回 prompt_tokens_details.cached_tokens）
+     */
+    @Column(name = "cached_tokens", nullable = false)
+    private Integer cachedTokens;
+    /**
+     * 本次运行成本估算，单位美元；未配置价格时为 0
+     */
+    @Column(name = "cost_usd", nullable = false, precision = 12, scale = 6)
+    private java.math.BigDecimal costUsd;
+    /**
      * 开始时间
      */
     @Column(name = "started_at", nullable = false)

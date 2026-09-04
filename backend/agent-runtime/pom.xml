@@ -44,6 +44,11 @@
             <artifactId>agentscope-harness</artifactId>
         </dependency>
         <dependency>
+            <!-- 2.0.0 起 OpenAIChatModel 从 core 拆到了扩展模块 -->
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-model-openai</artifactId>
+        </dependency>
+        <dependency>
             <groupId>io.lettuce</groupId>
             <artifactId>lettuce-core</artifactId>
             <version>6.4.2.RELEASE</version>

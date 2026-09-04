@@ -28,13 +28,15 @@ class AgentScopeEventTranslator {
         } else if (event instanceof ModelCallStartEvent) {
             events.add(of(context, RuntimeEventType.MODEL_CALL_STARTED, "开始调用大模型", null, Map.of(), elapsedMs));
         } else if (event instanceof ModelCallEndEvent e) {
+            Map<String, Object> usageMetadata = new LinkedHashMap<>();
+            usageMetadata.put("inputTokens", e.getUsage() != null ? e.getUsage().getInputTokens() : 0);
+            usageMetadata.put("outputTokens", e.getUsage() != null ? e.getUsage().getOutputTokens() : 0);
+            usageMetadata.put("totalTokens", e.getUsage() != null ? e.getUsage().getTotalTokens() : 0);
+            // 缓存命中 token：AgentScope 2.0.0 起从网关的 prompt_tokens_details.cached_tokens 透传
+            usageMetadata.put("cachedTokens", e.getUsage() != null ? e.getUsage().getCachedTokens() : 0);
+            usageMetadata.put("modelElapsedSeconds", e.getUsage() != null ? e.getUsage().getTime() : 0);
             events.add(of(context, RuntimeEventType.MODEL_CALL_FINISHED, "大模型调用完成", null,
-                    Map.of(
-                            "inputTokens", e.getUsage() != null ? e.getUsage().getInputTokens() : 0,
-                            "outputTokens", e.getUsage() != null ? e.getUsage().getOutputTokens() : 0,
-                            "totalTokens", e.getUsage() != null ? e.getUsage().getTotalTokens() : 0,
-                            "modelElapsedSeconds", e.getUsage() != null ? e.getUsage().getTime() : 0
-                    ), elapsedMs));
+                    usageMetadata, elapsedMs));
         } else if (event instanceof TextBlockStartEvent) {
             events.add(of(context, RuntimeEventType.ANSWER_STARTED, "开始生成回答", null, Map.of(), elapsedMs));
         } else if (event instanceof TextBlockDeltaEvent e) {

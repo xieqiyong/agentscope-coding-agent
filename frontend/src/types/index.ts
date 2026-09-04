@@ -75,6 +75,15 @@ export interface ChatMessage {
   plan?: PlanInfo
   confirmation?: Confirmation
   isStreaming?: boolean
+  // 本次回答的 token 用量与成本（opencode 风格）
+  usage?: MessageUsage
+}
+
+export interface MessageUsage {
+  inputTokens: number
+  outputTokens: number
+  cachedTokens: number
+  costUsd?: number
 }
 
 export interface PlanInfo {

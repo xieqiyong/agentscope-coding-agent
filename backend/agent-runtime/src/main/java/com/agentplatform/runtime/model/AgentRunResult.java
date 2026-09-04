@@ -11,6 +11,14 @@ public class AgentRunResult {
     private String answer;
     private int inputTokens;
     private int outputTokens;
+    /**
+     * 缓存命中输入 token
+     */
+    private int cachedTokens;
+    /**
+     * 成本估算（美元）
+     */
+    private double costUsd;
     private int modelCallCount;
     private String status;
 
@@ -60,6 +68,22 @@ public class AgentRunResult {
 
     public void setOutputTokens(int outputTokens) {
         this.outputTokens = outputTokens;
+    }
+
+    public int getCachedTokens() {
+        return cachedTokens;
+    }
+
+    public void setCachedTokens(int cachedTokens) {
+        this.cachedTokens = cachedTokens;
+    }
+
+    public double getCostUsd() {
+        return costUsd;
+    }
+
+    public void setCostUsd(double costUsd) {
+        this.costUsd = costUsd;
     }
 
     public int getModelCallCount() {

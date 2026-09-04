@@ -53,4 +53,19 @@ public class ModelConfigEntity extends BaseEntity {
      */
     @Column(name = "is_default", nullable = false)
     private Boolean defaultConfig;
+    /**
+     * 输入单价：美元 / 百万 token，为空表示未配置（不参与成本计算）
+     */
+    @Column(name = "input_price", nullable = true, precision = 12, scale = 4)
+    private java.math.BigDecimal inputPrice;
+    /**
+     * 缓存命中输入单价：美元 / 百万 token
+     */
+    @Column(name = "cached_input_price", nullable = true, precision = 12, scale = 4)
+    private java.math.BigDecimal cachedInputPrice;
+    /**
+     * 输出单价：美元 / 百万 token
+     */
+    @Column(name = "output_price", nullable = true, precision = 12, scale = 4)
+    private java.math.BigDecimal outputPrice;
 }

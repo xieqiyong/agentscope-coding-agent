@@ -8,8 +8,18 @@ export interface ModelConfig {
   modelName: string
   apiKeyMask: string | null
   defaultConfig: boolean
+  // 单价：美元 / 百万 token，null 表示未配置
+  inputPrice?: number | null
+  cachedInputPrice?: number | null
+  outputPrice?: number | null
   createdAt: string
   updatedAt: string
+}
+
+export interface ModelPriceInput {
+  inputPrice?: string
+  cachedInputPrice?: string
+  outputPrice?: string
 }
 
 export const modelConfigApi = {
@@ -23,7 +33,7 @@ export const modelConfigApi = {
     baseUrl: string
     modelName: string
     apiKey: string
-  }): Promise<any> => api.post('/model-configs', data),
+  } & ModelPriceInput): Promise<any> => api.post('/model-configs', data),
 
   update: (id: number, data: Partial<{
     name: string
@@ -31,7 +41,7 @@ export const modelConfigApi = {
     baseUrl: string
     modelName: string
     apiKey: string
-  }>): Promise<any> => api.put(`/model-configs/${id}`, data),
+  } & ModelPriceInput>): Promise<any> => api.put(`/model-configs/${id}`, data),
 
   delete: (id: number): Promise<any> => api.delete(`/model-configs/${id}`),
 

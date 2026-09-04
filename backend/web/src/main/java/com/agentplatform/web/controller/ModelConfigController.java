@@ -117,7 +117,10 @@ public class ModelConfigController {
                 body.get("provider"),
                 body.get("baseUrl"),
                 body.get("modelName"),
-                body.get("apiKey")
+                body.get("apiKey"),
+                parseDecimal(body.get("inputPrice")),
+                parseDecimal(body.get("cachedInputPrice")),
+                parseDecimal(body.get("outputPrice"))
         );
         return ApiResponse.success(entity);
     }
@@ -134,7 +137,10 @@ public class ModelConfigController {
                 body.get("provider"),
                 body.get("baseUrl"),
                 body.get("modelName"),
-                body.get("apiKey")
+                body.get("apiKey"),
+                parseDecimal(body.get("inputPrice")),
+                parseDecimal(body.get("cachedInputPrice")),
+                parseDecimal(body.get("outputPrice"))
         );
         return ApiResponse.success(entity);
     }
@@ -219,6 +225,20 @@ public class ModelConfigController {
     private String textValue(Map<String, Object> body, String key) {
         Object value = body.get(key);
         return value == null ? null : String.valueOf(value);
+    }
+
+    /**
+     * 解析单价字段；空串按未传处理，格式非法返回 400。
+     */
+    private java.math.BigDecimal parseDecimal(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return new java.math.BigDecimal(value.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private Long parseLong(Object value) {

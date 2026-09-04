@@ -165,10 +165,12 @@ public class AgentRuntimeService {
                 MemoryCaptureResult memoryCaptureResult = captureMemory(command, conversation.getId(), userMessage.getId(), result.getAnswer());
                 lifecycleService.completeRun(run.getId(), result);
                 emit(persistedSink, run.getId(), traceId, RuntimeEventType.RUN_FINISHED, "运行完成",
-                        "ExecutorAgent 已完成计划执行", Map.of(
+                        "ExecutorAgent 已完成计划执行", usageMap(
                                 "status", AgentRunStatus.COMPLETED.name(),
                                 "inputTokens", result.getInputTokens(),
                                 "outputTokens", result.getOutputTokens(),
+                                "cachedTokens", result.getCachedTokens(),
+                                "costUsd", result.getCostUsd(),
                                 "modelCallCount", result.getModelCallCount(),
                                 "memoryCaptured", memoryCaptureResult.captured(),
                                 "memoryActivated", memoryCaptureResult.activated(),
@@ -193,10 +195,12 @@ public class AgentRuntimeService {
                 MemoryCaptureResult memoryCaptureResult = captureMemory(command, conversation.getId(), userMessage.getId(), result.getAnswer());
                 lifecycleService.completeRun(run.getId(), result);
                 emit(persistedSink, run.getId(), traceId, RuntimeEventType.RUN_FINISHED, "运行完成",
-                        "已从中断点续接完成计划执行", Map.of(
+                        "已从中断点续接完成计划执行", usageMap(
                                 "status", AgentRunStatus.COMPLETED.name(),
                                 "inputTokens", result.getInputTokens(),
                                 "outputTokens", result.getOutputTokens(),
+                                "cachedTokens", result.getCachedTokens(),
+                                "costUsd", result.getCostUsd(),
                                 "modelCallCount", result.getModelCallCount(),
                                 "memoryCaptured", memoryCaptureResult.captured(),
                                 "memoryActivated", memoryCaptureResult.activated(),
@@ -219,10 +223,12 @@ public class AgentRuntimeService {
                 MemoryCaptureResult memoryCaptureResult = captureMemory(command, conversation.getId(), userMessage.getId(), result.getAnswer());
                 lifecycleService.completeRun(run.getId(), result);
                 emit(persistedSink, run.getId(), traceId, RuntimeEventType.RUN_FINISHED, "运行完成",
-                        "智能路由运行已完成", Map.of(
+                        "智能路由运行已完成", usageMap(
                                 "status", AgentRunStatus.COMPLETED.name(),
                                 "inputTokens", result.getInputTokens(),
                                 "outputTokens", result.getOutputTokens(),
+                                "cachedTokens", result.getCachedTokens(),
+                                "costUsd", result.getCostUsd(),
                                 "modelCallCount", result.getModelCallCount(),
                                 "memoryCaptured", memoryCaptureResult.captured(),
                                 "memoryActivated", memoryCaptureResult.activated(),
@@ -244,10 +250,12 @@ public class AgentRuntimeService {
             MemoryCaptureResult memoryCaptureResult = captureMemory(command, conversation.getId(), userMessage.getId(), result.getAnswer());
             lifecycleService.completeRun(run.getId(), result);
             emit(persistedSink, run.getId(), traceId, RuntimeEventType.RUN_FINISHED, "运行完成",
-                    "智能体运行已完成", Map.of(
+                    "智能体运行已完成", usageMap(
                             "status", AgentRunStatus.COMPLETED.name(),
                             "inputTokens", result.getInputTokens(),
                             "outputTokens", result.getOutputTokens(),
+                                "cachedTokens", result.getCachedTokens(),
+                                "costUsd", result.getCostUsd(),
                             "modelCallCount", result.getModelCallCount(),
                             "memoryCaptured", memoryCaptureResult.captured(),
                             "memoryActivated", memoryCaptureResult.activated(),
@@ -344,10 +352,12 @@ public class AgentRuntimeService {
             );
             lifecycleService.completeRun(run.getId(), result);
             emit(persistedSink, run.getId(), run.getTraceId(), RuntimeEventType.RUN_FINISHED, "运行完成",
-                    "智能体运行已完成", Map.of(
+                    "智能体运行已完成", usageMap(
                             "status", AgentRunStatus.COMPLETED.name(),
                             "inputTokens", result.getInputTokens(),
                             "outputTokens", result.getOutputTokens(),
+                                "cachedTokens", result.getCachedTokens(),
+                                "costUsd", result.getCostUsd(),
                             "modelCallCount", result.getModelCallCount(),
                             "memoryCaptured", memoryCaptureResult.captured(),
                             "memoryActivated", memoryCaptureResult.activated(),
@@ -993,6 +1003,17 @@ public class AgentRuntimeService {
             return 0;
         }
         return Math.max(1, text.length() / 4);
+    }
+
+    /**
+     * 构建超过 10 个键值对的 RUN_FINISHED 元数据（Map.of 有 10 对上限）。
+     */
+    private Map<String, Object> usageMap(Object... pairs) {
+        Map<String, Object> map = new java.util.LinkedHashMap<>();
+        for (int i = 0; i + 1 < pairs.length; i += 2) {
+            map.put(String.valueOf(pairs[i]), pairs[i + 1]);
+        }
+        return map;
     }
 
     private long elapsedMs(long startedNanos) {

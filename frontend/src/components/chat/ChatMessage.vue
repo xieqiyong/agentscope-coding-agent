@@ -96,6 +96,14 @@
       <!-- Streaming cursor -->
       <span v-if="message.isStreaming" class="streaming-cursor">▊</span>
 
+      <!-- Token 用量与成本（opencode 风格，流式结束后显示） -->
+      <div v-if="!message.isStreaming && message.usage && (message.usage.inputTokens || message.usage.outputTokens)" class="usage-bar">
+        <span class="usage-item" title="输入 token">↑ {{ formatTokens(message.usage.inputTokens) }}</span>
+        <span class="usage-item" title="输出 token">↓ {{ formatTokens(message.usage.outputTokens) }}</span>
+        <span v-if="message.usage.cachedTokens" class="usage-item cache" title="缓存命中输入 token">⚡ {{ formatTokens(message.usage.cachedTokens) }}</span>
+        <span v-if="message.usage.costUsd" class="usage-item cost" title="成本估算（美元）">${{ message.usage.costUsd.toFixed(4) }}</span>
+      </div>
+
       <!-- 消息操作栏：复制 + 点赞/点踩（仅流式结束后显示） -->
       <div v-if="!message.isStreaming && hasContent" class="message-actions">
         <button class="action-btn" @click="copyMessage" title="复制回答">
@@ -170,6 +178,13 @@ const marked = new Marked(
 )
 
 const toolCalls = computed(() => props.message.toolCalls || [])
+
+// token 数量展示：过千缩写为 k
+function formatTokens(value: number): string {
+  if (value >= 1000000) return (value / 1000000).toFixed(1) + 'M'
+  if (value >= 1000) return (value / 1000).toFixed(1) + 'k'
+  return String(value)
+}
 const compactToolCalls = computed(() => toolCalls.value.slice(0, 3))
 const thinking = computed(() => props.message.thinking)
 const showThinkingTrace = computed(() => Boolean(thinking.value || toolCalls.value.length))
@@ -927,6 +942,29 @@ function isCommandTool(toolName: string): boolean {
 }
 
 /* ==================== 流式光标 ==================== */
+/* Token 用量与成本行 */
+.usage-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: var(--bg-hover);
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  width: fit-content;
+}
+
+.usage-item.cache {
+  color: var(--accent);
+}
+
+.usage-item.cost {
+  color: var(--text-secondary);
+}
+
 .streaming-cursor {
   color: var(--accent);
   animation: blink 1s step-end infinite;

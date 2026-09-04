@@ -206,6 +206,7 @@ export const useChatStore = defineStore('chat', () => {
 
       case 'RUN_FINISHED':
         rememberConversationFromEvent(event)
+        attachRunCost(event)
         if (readString(event.metadata?.status).toUpperCase() === 'CANCELLED') {
           markRunningPlanCancelled()
         }
@@ -322,6 +323,8 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function handleModelThinkingFinished(event: RuntimeEvent) {
+    // 累计模型调用的 token 用量（含缓存命中），无论是主回答还是多 Agent 节点
+    accumulateUsage(event)
     const nodeId = eventTaskNodeId(event)
     if (nodeId) {
       const step = findPlanStep(nodeId)
@@ -332,6 +335,32 @@ export const useChatStore = defineStore('chat', () => {
     if (lastMsg?.role === 'assistant' && lastMsg.thinking?.status === 'thinking') {
       handleThinkingFinished(event)
     }
+  }
+
+  // 把模型调用返回的 token 用量累加到最后一条助手消息上
+  function accumulateUsage(event: RuntimeEvent) {
+    const meta = event.metadata || {}
+    const input = Number(meta.inputTokens) || 0
+    const output = Number(meta.outputTokens) || 0
+    if (!input && !output) return
+    const lastMsg = messages.value[messages.value.length - 1]
+    if (lastMsg?.role !== 'assistant') return
+    const usage = lastMsg.usage || { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }
+    usage.inputTokens += input
+    usage.outputTokens += output
+    usage.cachedTokens += Number(meta.cachedTokens) || 0
+    lastMsg.usage = usage
+  }
+
+  // RUN_FINISHED 携带的成本估算写回当前消息
+  function attachRunCost(event: RuntimeEvent) {
+    const cost = Number(event.metadata?.costUsd)
+    if (!cost) return
+    const lastMsg = messages.value[messages.value.length - 1]
+    if (lastMsg?.role !== 'assistant') return
+    const usage = lastMsg.usage || { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }
+    usage.costUsd = cost
+    lastMsg.usage = usage
   }
 
   function handleThinkingStarted(event: RuntimeEvent) {

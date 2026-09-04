@@ -476,6 +476,9 @@ public class MultiAgentOrchestrator {
         result.setAnswer(formatAggregateAnswer(state));
         result.setInputTokens(currentRunResults.stream().mapToInt(AgentRunResult::getInputTokens).sum());
         result.setOutputTokens(currentRunResults.stream().mapToInt(AgentRunResult::getOutputTokens).sum());
+        // 缓存命中与成本同样按节点结果累加，保证多 Agent 汇总口径与单 Agent 一致
+        result.setCachedTokens(currentRunResults.stream().mapToInt(AgentRunResult::getCachedTokens).sum());
+        result.setCostUsd(currentRunResults.stream().mapToDouble(AgentRunResult::getCostUsd).sum());
         result.setModelCallCount(currentRunResults.stream().mapToInt(AgentRunResult::getModelCallCount).sum());
         result.setStatus(status);
         return result;
