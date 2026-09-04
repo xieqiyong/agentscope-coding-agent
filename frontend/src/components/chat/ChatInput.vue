@@ -48,10 +48,10 @@
           </button>
         </div>
         <div class="input-actions">
-          <button class="utility-btn add" type="button" title="添加上下文">
+          <button class="utility-btn" type="button" title="添加上下文">
             <i class="pi pi-plus"></i>
           </button>
-          <button class="utility-btn" type="button" title="挂载技能（只对本次对话生效）" @click="openMentionPicker">
+          <button class="utility-btn" type="button" title="挂载技能（@ 引用，只对本次对话生效）" @click="openMentionPicker">
             <i class="pi pi-bolt"></i>
           </button>
           <button
@@ -61,18 +61,17 @@
             title="当前智能体，点击管理"
             @click="$router.push('/agents')"
           >
-            <i class="pi pi-sitemap" style="font-size: 0.62rem;"></i>
+            <i class="pi pi-sitemap" style="font-size: 0.6rem;"></i>
             <span class="agent-pill-name">{{ agentStore.currentAgent.name }}</span>
-            <i class="pi pi-chevron-down" style="font-size: 0.55rem;"></i>
+            <i class="pi pi-chevron-down" style="font-size: 0.5rem; opacity: 0.6;"></i>
           </button>
           <div class="action-spacer"></div>
           <span
             v-if="sessionUsage.inputTokens || sessionUsage.outputTokens"
             class="toolbar-usage"
-            title="本会话累计 token 用量与成本估算"
+            :title="`输入 ${formatTokens(sessionUsage.inputTokens)} · 输出 ${formatTokens(sessionUsage.outputTokens)}`"
           >
-            {{ formatTokens(sessionUsage.inputTokens + sessionUsage.outputTokens) }} tokens
-            <template v-if="sessionUsage.costUsd"> · ${{ sessionUsage.costUsd.toFixed(4) }}</template>
+            {{ formatTokens(sessionUsage.inputTokens + sessionUsage.outputTokens) }} tokens<template v-if="sessionUsage.costUsd"> · ${{ sessionUsage.costUsd.toFixed(4) }}</template>
           </span>
           <button
             v-if="chatStore.isStreaming"
@@ -87,40 +86,13 @@
             class="action-btn send"
             :disabled="!canSend"
             @click="send"
-            title="发送 (Enter)"
+            title="发送（Enter 发送，Shift+Enter 换行）"
           >
             <i class="pi pi-arrow-up" style="font-size: 0.8rem;"></i>
           </button>
         </div>
       </div>
 
-      <!-- 底部信息栏 -->
-      <div v-if="variant !== 'landing'" class="input-footer">
-        <div class="footer-left">
-          <!-- 会话累计用量（opencode 风格） -->
-          <div
-            v-if="sessionUsage.inputTokens || sessionUsage.outputTokens"
-            class="session-usage"
-            title="本会话累计：输入 token · 输出 token · 缓存命中 · 成本估算（美元）"
-          >
-            <span class="session-usage-total">
-              {{ formatTokens(sessionUsage.inputTokens + sessionUsage.outputTokens) }} tokens
-            </span>
-            <span class="session-usage-sep">·</span>
-            <span class="session-usage-detail">输入 {{ formatTokens(sessionUsage.inputTokens) }}</span>
-            <span class="session-usage-detail">输出 {{ formatTokens(sessionUsage.outputTokens) }}</span>
-            <span v-if="sessionUsage.cachedTokens" class="session-usage-cache" title="缓存命中输入 token">
-              缓存命中 {{ formatTokens(sessionUsage.cachedTokens) }}
-            </span>
-            <span v-if="sessionUsage.costUsd" class="session-usage-cost" title="成本估算（美元）">
-              成本 ${{ sessionUsage.costUsd.toFixed(4) }}
-            </span>
-          </div>
-        </div>
-        <div class="footer-right">
-          <span class="footer-hint">Enter 发送 · Shift+Enter 换行</span>
-        </div>
-      </div>
     </div>
   </div>
 </template>
@@ -187,7 +159,7 @@ const placeholder = computed(() => {
   if (!workspaceStore.currentWorkspace) return '请先选择一个工作区...'
   if (!agentStore.currentAgent) return '请先选择或创建一个 Agent...'
   if (chatStore.isStreaming) return 'Agent 正在思考...'
-  return 'How can I help you today?'
+  return '描述你的任务，@ 可挂载技能；Enter 发送，Shift+Enter 换行'
 })
 
 // 加载可 @ 挂载的技能列表
@@ -369,14 +341,13 @@ function autoResize() {
   position: relative;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: var(--spacing-sm);
+  gap: 6px;
   background: var(--bg-input);
   border: 1px solid var(--border-color);
-  border-radius: 24px;
-  padding: 20px 22px 16px;
+  border-radius: 16px;
+  padding: 14px 14px 10px;
   transition: border-color 0.2s, box-shadow 0.2s;
-  box-shadow: 0 6px 16px rgba(47, 42, 36, 0.075);
+  box-shadow: 0 4px 14px rgba(47, 42, 36, 0.06);
 }
 
 /* 已挂载 Skills 的提示条 */
@@ -498,7 +469,7 @@ function autoResize() {
   color: var(--text-primary);
   background: transparent;
   max-height: 200px;
-  min-height: 54px;
+  min-height: 44px;
 }
 
 .chat-textarea::placeholder {
@@ -514,7 +485,7 @@ function autoResize() {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
@@ -563,7 +534,7 @@ function autoResize() {
 }
 
 .utility-btn {
-  height: 34px;
+  height: 30px;
   border: none;
   border-radius: 10px;
   background: transparent;
@@ -576,7 +547,7 @@ function autoResize() {
 }
 
 .utility-btn {
-  width: 34px;
+  width: 30px;
   font-size: var(--font-size-sm);
 }
 
@@ -624,65 +595,6 @@ function autoResize() {
   background: #dc2626;
 }
 
-/* 底部信息栏 */
-.input-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: var(--spacing-xs);
-  padding: 0 var(--spacing-xs);
-}
-
-/* 会话累计用量条 */
-.session-usage {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: var(--bg-hover);
-  border: 1px solid var(--border-color);
-  font-family: var(--font-mono);
-  font-size: 0.63rem;
-  color: var(--text-muted);
-  user-select: none;
-}
-
-.session-usage-total {
-  color: var(--text-secondary);
-  font-weight: 600;
-}
-
-.session-usage-sep {
-  color: var(--text-muted);
-  opacity: 0.6;
-}
-
-.session-usage-detail {
-  color: var(--text-muted);
-}
-
-.session-usage-cache {
-  color: var(--accent);
-}
-
-.session-usage-cost {
-  color: var(--text-secondary);
-  padding-left: 7px;
-  border-left: 1px solid var(--border-color);
-}
-
-.footer-hint {
-  font-size: 0.65rem;
-  color: var(--text-muted);
-}
-
-.footer-left,
-.footer-right {
-  display: flex;
-  align-items: center;
-}
-
 .chat-input-area.dock .input-wrapper {
   border-radius: 18px;
   padding: 12px 14px 10px;
@@ -707,10 +619,5 @@ function autoResize() {
     display: none;
   }
 
-  /* 窄屏只保留总量和成本，收起明细 */
-  .session-usage-sep,
-  .session-usage-detail {
-    display: none;
-  }
 }
 </style>
