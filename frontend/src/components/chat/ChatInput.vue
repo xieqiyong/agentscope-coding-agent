@@ -68,10 +68,12 @@
           <div class="action-spacer"></div>
           <span
             v-if="sessionUsage.inputTokens || sessionUsage.outputTokens"
-            class="toolbar-usage"
-            :title="`输入 ${formatTokens(sessionUsage.inputTokens)} · 输出 ${formatTokens(sessionUsage.outputTokens)}`"
+            :class="['context-meter', contextLevel]"
+            :title="`上下文占用 ${contextPercent.toFixed(0)}%（输入 ${formatTokens(sessionUsage.inputTokens)} · 输出 ${formatTokens(sessionUsage.outputTokens)} · 窗口 ${formatTokens(contextWindow)}）`"
           >
-            {{ formatTokens(sessionUsage.inputTokens + sessionUsage.outputTokens) }} tokens<template v-if="sessionUsage.costUsd"> · ${{ sessionUsage.costUsd.toFixed(4) }}</template>
+            <span class="context-bar"><span class="context-fill" :style="{ width: Math.min(contextPercent, 100) + '%' }"></span></span>
+            <span class="context-text">{{ formatTokens(sessionUsage.inputTokens + sessionUsage.outputTokens) }} / {{ formatTokens(contextWindow) }}</span>
+            <template v-if="sessionUsage.costUsd"> · ${{ sessionUsage.costUsd.toFixed(4) }}</template>
           </span>
           <button
             v-if="chatStore.isStreaming"
@@ -98,12 +100,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, reactive } from 'vue'
+import { ref, computed, nextTick, onMounted, reactive, watch } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useAgentStore } from '@/stores/agent'
 import { useSse } from '@/composables/useSse'
 import { skillApi, type SkillDefinition } from '@/api/skill'
+import { modelConfigApi } from '@/api/modelConfig'
 
 const chatStore = useChatStore()
 const workspaceStore = useWorkspaceStore()
@@ -148,6 +151,33 @@ const disabled = computed(
 // 会话累计用量（含输入/输出/缓存/成本）
 const sessionUsage = computed(() => chatStore.sessionUsage)
 
+// 模型上下文窗口大小（token），按当前 Agent 绑定的模型名推断，未知默认 128k
+const contextWindow = ref(128000)
+
+const contextPercent = computed(() =>
+  contextWindow.value > 0
+    ? ((sessionUsage.value.inputTokens + sessionUsage.value.outputTokens) / contextWindow.value) * 100
+    : 0,
+)
+
+// 占用分级：<60% 正常，≥60% 偏高，≥85% 紧张
+const contextLevel = computed(() => {
+  if (contextPercent.value >= 85) return 'critical'
+  if (contextPercent.value >= 60) return 'high'
+  return 'ok'
+})
+
+// 从模型名推断上下文窗口；找不到返回 0 时保持默认
+function estimateContextWindow(modelName: string): number {
+  const name = modelName.toLowerCase()
+  if (name.includes('claude')) return 200000
+  if (name.includes('gpt-4') || name.includes('gpt-5') || name.includes('o1') || name.includes('o3')) return 128000
+  if (name.includes('glm-4')) return 128000
+  if (name.includes('deepseek')) return 64000
+  if (name.includes('qwen') || name.includes('qwen3')) return 131072
+  return 128000
+}
+
 // token 数量展示：过千缩写为 k
 function formatTokens(value: number): string {
   if (value >= 1000000) return (value / 1000000).toFixed(1) + 'M'
@@ -162,8 +192,28 @@ const placeholder = computed(() => {
   return '描述你的任务，@ 可挂载技能；Enter 发送，Shift+Enter 换行'
 })
 
+// Agent 绑定模型变化时刷新上下文窗口估算
+watch(() => agentStore.currentAgent?.modelConfigId, refreshContextWindow)
+
+async function refreshContextWindow() {
+  try {
+    const res: any = await modelConfigApi.list()
+    const configs = res.data || []
+    const bound = agentStore.currentAgent?.modelConfigId
+      ? configs.find((c: any) => String(c.id) === String(agentStore.currentAgent?.modelConfigId))
+      : configs.find((c: any) => c.defaultConfig)
+    const modelName = bound?.modelName || configs.find((c: any) => c.defaultConfig)?.modelName
+    if (modelName) {
+      contextWindow.value = estimateContextWindow(String(modelName))
+    }
+  } catch {
+    // 拉取失败保持默认窗口估算
+  }
+}
+
 // 加载可 @ 挂载的技能列表
 onMounted(async () => {
+  refreshContextWindow()
   try {
     const res: any = await skillApi.list(true)
     availableSkills.value = (res.data || [])
@@ -522,15 +572,49 @@ function autoResize() {
   font-weight: 500;
 }
 
-/* 工具栏右侧的会话用量紧凑徽标 */
-.toolbar-usage {
+/* 工具栏右侧的上下文占用指示器：迷你进度条 + 已用/窗口 */
+.context-meter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--font-mono);
   font-size: 0.62rem;
   color: var(--text-muted);
-  padding: 3px 8px;
-  border-radius: 999px;
   user-select: none;
   white-space: nowrap;
+}
+
+.context-bar {
+  width: 54px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border-color);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.context-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--text-muted);
+  transition: width 0.3s;
+}
+
+.context-meter.high .context-fill {
+  background: #d9974a;
+}
+
+.context-meter.high .context-text {
+  color: #b3762f;
+}
+
+.context-meter.critical .context-fill {
+  background: var(--danger);
+}
+
+.context-meter.critical .context-text {
+  color: var(--danger);
 }
 
 .utility-btn {
