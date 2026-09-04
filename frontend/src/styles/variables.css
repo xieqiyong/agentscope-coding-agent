@@ -45,7 +45,11 @@
 
   /* Typography */
   --font-serif: Georgia, 'Times New Roman', serif;
-  --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  /* 苹果系统字体优先，Windows 依次回退 HarmonyOS Sans / MiSans / 雅黑 */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC',
+    'HarmonyOS Sans SC', 'MiSans', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei',
+    'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
   --font-size-xs: 0.75rem;
   --font-size-sm: 0.875rem;
   --font-size-base: 0.9375rem;
