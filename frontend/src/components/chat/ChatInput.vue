@@ -80,7 +80,28 @@
 
       <!-- 底部信息栏 -->
       <div v-if="variant !== 'landing'" class="input-footer">
-        <div class="footer-left"></div>
+        <div class="footer-left">
+          <!-- 会话累计用量（opencode 风格） -->
+          <div
+            v-if="sessionUsage.inputTokens || sessionUsage.outputTokens"
+            class="session-usage"
+            title="本会话累计：↑ 输入 token · ↓ 输出 token · ⚡ 缓存命中 · $ 成本估算"
+          >
+            <span class="session-usage-total">
+              <i class="pi pi-coins" style="font-size: 0.62rem;"></i>
+              {{ formatTokens(sessionUsage.inputTokens + sessionUsage.outputTokens) }} tokens
+            </span>
+            <span class="session-usage-sep">·</span>
+            <span class="session-usage-detail">↑ {{ formatTokens(sessionUsage.inputTokens) }}</span>
+            <span class="session-usage-detail">↓ {{ formatTokens(sessionUsage.outputTokens) }}</span>
+            <span v-if="sessionUsage.cachedTokens" class="session-usage-cache" title="缓存命中输入 token">
+              ⚡ {{ formatTokens(sessionUsage.cachedTokens) }}
+            </span>
+            <span v-if="sessionUsage.costUsd" class="session-usage-cost" title="成本估算（美元）">
+              ${{ sessionUsage.costUsd.toFixed(4) }}
+            </span>
+          </div>
+        </div>
         <div class="footer-right">
           <span class="footer-hint">Enter 发送 · Shift+Enter 换行</span>
         </div>
@@ -136,6 +157,16 @@ const canSend = computed(
 const disabled = computed(
   () => !workspaceStore.currentWorkspace || !agentStore.currentAgent || chatStore.isStreaming,
 )
+
+// 会话累计用量（含输入/输出/缓存/成本）
+const sessionUsage = computed(() => chatStore.sessionUsage)
+
+// token 数量展示：过千缩写为 k
+function formatTokens(value: number): string {
+  if (value >= 1000000) return (value / 1000000).toFixed(1) + 'M'
+  if (value >= 1000) return (value / 1000).toFixed(1) + 'k'
+  return String(value)
+}
 
 const placeholder = computed(() => {
   if (!workspaceStore.currentWorkspace) return '请先选择一个工作区...'
@@ -529,6 +560,48 @@ function autoResize() {
   padding: 0 var(--spacing-xs);
 }
 
+/* 会话累计用量条 */
+.session-usage {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  font-family: var(--font-mono);
+  font-size: 0.63rem;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.session-usage-total {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.session-usage-sep {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.session-usage-detail {
+  color: var(--text-muted);
+}
+
+.session-usage-cache {
+  color: var(--accent);
+}
+
+.session-usage-cost {
+  color: var(--text-secondary);
+  padding-left: 7px;
+  border-left: 1px solid var(--border-color);
+}
+
 .footer-hint {
   font-size: 0.65rem;
   color: var(--text-muted);
@@ -561,6 +634,12 @@ function autoResize() {
   }
 
   .utility-btn:nth-of-type(3) {
+    display: none;
+  }
+
+  /* 窄屏只保留总量和成本，收起明细 */
+  .session-usage-sep,
+  .session-usage-detail {
     display: none;
   }
 }

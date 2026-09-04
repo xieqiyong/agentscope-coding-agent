@@ -19,6 +19,19 @@ export const useChatStore = defineStore('chat', () => {
   const activeRunId = ref<number | null>(null)
 
   const currentMessages = computed(() => messages.value)
+
+  // 会话累计用量：汇总所有助手消息的 token 与成本，供聊天框底部常驻展示
+  const sessionUsage = computed(() => {
+    const total = { inputTokens: 0, outputTokens: 0, cachedTokens: 0, costUsd: 0 }
+    for (const msg of messages.value) {
+      if (msg.role !== 'assistant' || !msg.usage) continue
+      total.inputTokens += msg.usage.inputTokens || 0
+      total.outputTokens += msg.usage.outputTokens || 0
+      total.cachedTokens += msg.usage.cachedTokens || 0
+      total.costUsd += msg.usage.costUsd || 0
+    }
+    return total
+  })
   const hasPendingConfirmation = computed(() => pendingConfirmations.value.length > 0)
 
   async function fetchSessions(workspaceId: string) {
@@ -1201,6 +1214,7 @@ export const useChatStore = defineStore('chat', () => {
     lastConversationId,
     activeRunId,
     currentMessages,
+    sessionUsage,
     hasPendingConfirmation,
     fetchSessions,
     createSession,

@@ -97,11 +97,27 @@
       <span v-if="message.isStreaming" class="streaming-cursor">▊</span>
 
       <!-- Token 用量与成本（opencode 风格，流式结束后显示） -->
-      <div v-if="!message.isStreaming && message.usage && (message.usage.inputTokens || message.usage.outputTokens)" class="usage-bar">
-        <span class="usage-item" title="输入 token">↑ {{ formatTokens(message.usage.inputTokens) }}</span>
-        <span class="usage-item" title="输出 token">↓ {{ formatTokens(message.usage.outputTokens) }}</span>
-        <span v-if="message.usage.cachedTokens" class="usage-item cache" title="缓存命中输入 token">⚡ {{ formatTokens(message.usage.cachedTokens) }}</span>
-        <span v-if="message.usage.costUsd" class="usage-item cost" title="成本估算（美元）">${{ message.usage.costUsd.toFixed(4) }}</span>
+      <div
+        v-if="!message.isStreaming && message.usage && (message.usage.inputTokens || message.usage.outputTokens)"
+        class="usage-bar"
+        title="本次回答的 token 用量：↑ 输入 · ↓ 输出 · ⚡ 缓存命中 · $ 成本估算"
+      >
+        <span class="usage-chip">
+          <i class="pi pi-arrow-up-right"></i>
+          <span class="usage-value">{{ formatTokens(message.usage.inputTokens) }}</span>
+        </span>
+        <span class="usage-chip">
+          <i class="pi pi-arrow-down-right"></i>
+          <span class="usage-value">{{ formatTokens(message.usage.outputTokens) }}</span>
+        </span>
+        <span v-if="message.usage.cachedTokens" class="usage-chip cache">
+          <i class="pi pi-bolt"></i>
+          <span class="usage-value">{{ formatTokens(message.usage.cachedTokens) }}</span>
+        </span>
+        <span v-if="message.usage.costUsd" class="usage-chip cost">
+          <i class="pi pi-dollar"></i>
+          <span class="usage-value">{{ message.usage.costUsd.toFixed(4) }}</span>
+        </span>
       </div>
 
       <!-- 消息操作栏：复制 + 点赞/点踩（仅流式结束后显示） -->
@@ -942,27 +958,56 @@ function isCommandTool(toolName: string): boolean {
 }
 
 /* ==================== 流式光标 ==================== */
-/* Token 用量与成本行 */
+/* Token 用量与成本行：分立小徽标 */
 .usage-bar {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  margin-top: 6px;
-  padding: 2px 8px;
-  border-radius: 8px;
-  background: var(--bg-hover);
-  font-family: var(--font-mono);
-  font-size: 0.65rem;
-  color: var(--text-muted);
+  gap: 6px;
+  margin-top: 8px;
   width: fit-content;
 }
 
-.usage-item.cache {
+.usage-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  font-family: var(--font-mono);
+  font-size: 0.63rem;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.usage-chip .pi {
+  font-size: 0.58rem;
+}
+
+.usage-value {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.usage-chip.cache {
+  border-color: rgba(217, 109, 74, 0.35);
+  background: rgba(217, 109, 74, 0.08);
   color: var(--accent);
 }
 
-.usage-item.cost {
-  color: var(--text-secondary);
+.usage-chip.cache .usage-value {
+  color: var(--accent);
+}
+
+.usage-chip.cost {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.usage-chip.cost .pi,
+.usage-chip.cost .usage-value {
+  color: var(--bg-main);
 }
 
 .streaming-cursor {
