@@ -59,8 +59,8 @@ public class AgentRunContextBuilder {
         String userId = StringUtils.hasText(command.getUserId()) ? command.getUserId() : "default";
         List<MemoryEntryEntity> activeMemories = memoryContextAssembler.loadActiveMemories(workspace.getId(), userId);
 
-        List<ConversationMessageEntity> recentMessages =
-                conversationMessageRepository.findByConversationIdOrderByCreatedAtAsc(conversationId);
+        List<ConversationMessageEntity> recentMessages = limitRecentMessages(
+                conversationMessageRepository.findByConversationIdOrderByCreatedAtAsc(conversationId));
 
         RuntimeContext context = new RuntimeContext();
         context.setCommand(command);
@@ -115,6 +115,31 @@ public class AgentRunContextBuilder {
                 agent.getTimeoutSeconds(), firstPositive(null, context.getTimeoutSeconds(), 86400)));
         context.setSystemPrompt(buildSystemPrompt(agent, context.getWorkspace(), context.getActiveMemories()));
         return true;
+    }
+
+    /**
+     * 中文注释：历史窗口截断——只把最近一段对话送进模型，避免会话变长后每轮全量重发导致 token 消耗失控。
+     * 默认保留最近 20 条且总字符不超过 24000，超出部分从最旧开始丢弃。
+     */
+    private List<ConversationMessageEntity> limitRecentMessages(List<ConversationMessageEntity> messages) {
+        if (messages == null || messages.size() <= 20) {
+            return messages == null ? List.of() : messages;
+        }
+        int budgetChars = 24000;
+        int total = 0;
+        int start = messages.size();
+        for (int i = messages.size() - 1; i >= 0 && (messages.size() - i) <= 20; i--) {
+            int len = messages.get(i).getContent() == null ? 0 : messages.get(i).getContent().length();
+            if (total + len > budgetChars) {
+                break;
+            }
+            total += len;
+            start = i;
+        }
+        if (start == 0) {
+            return messages;
+        }
+        return messages.subList(start, messages.size());
     }
 
     private String buildSystemPrompt(AgentEntity agent, WorkspaceEntity workspace, List<MemoryEntryEntity> memories) {

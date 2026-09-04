@@ -120,6 +120,16 @@ public class AgentRuntimeService {
         cancellationService.bindCurrentThread(run.getId());
 
         RuntimeEventSink persistedSink = wrapLifecycleSink(run.getId(), traceId, clientSink, started);
+        // 流式增量落库：预创建助手消息占位行，回答生成过程中节流更新，刷新页面也能看到已生成的部分
+        StreamingAnswerPersister streamingAnswer = new StreamingAnswerPersister(
+                createStreamingAssistantMessage(conversation.getId()));
+        RuntimeEventSink recordingSink = event -> {
+            if (event != null && event.getType() == RuntimeEventType.ANSWER_DELTA
+                    && !hasNodeScope(event)) {
+                streamingAnswer.append(event.getContent());
+            }
+            persistedSink.emit(event);
+        };
         emit(persistedSink, run.getId(), traceId, RuntimeEventType.RUN_STARTED, "运行开始",
                 "智能体运行已开始", Map.of(
                         "conversationId", conversation.getId(),
@@ -129,9 +139,9 @@ public class AgentRuntimeService {
         try {
             cancellationService.assertNotCancelled(run.getId());
             RuntimeContext context = contextBuilder.build(command, conversation.getId(), userMessage.getId(), run.getId(), traceId);
-            context.setRuntimeEventSink(persistedSink);
+            context.setRuntimeEventSink(recordingSink);
             context.setRunStartedNanos(started);
-            emit(persistedSink, run.getId(), traceId, RuntimeEventType.CONTEXT_LOADED, "上下文加载完成",
+            emit(recordingSink, run.getId(), traceId, RuntimeEventType.CONTEXT_LOADED, "上下文加载完成",
                     null, Map.of(
                             "workspaceId", context.getWorkspace().getId(),
                             "agentId", context.getAgent().getId(),
@@ -141,11 +151,11 @@ public class AgentRuntimeService {
                     ), elapsedMs(started));
 
             if (isPlanOnly(command)) {
-                AgentRunResult result = multiAgentOrchestrator.planOnly(context, persistedSink);
+                AgentRunResult result = multiAgentOrchestrator.planOnly(context, recordingSink);
                 cancellationService.assertNotCancelled(run.getId());
-                saveAssistantMessage(conversation.getId(), result.getAnswer());
+                streamingAnswer.finalize(result.getAnswer());
                 lifecycleService.completeRun(run.getId(), result);
-                emit(persistedSink, run.getId(), traceId, RuntimeEventType.RUN_FINISHED, "运行完成",
+                emit(recordingSink, run.getId(), traceId, RuntimeEventType.RUN_FINISHED, "运行完成",
                         "PlannerAgent 已完成计划生成", Map.of(
                                 "status", AgentRunStatus.COMPLETED.name(),
                                 "conversationId", conversation.getId(),
@@ -156,15 +166,16 @@ public class AgentRuntimeService {
             }
 
             if (isPlanExecute(command)) {
-                AgentRunResult result = multiAgentOrchestrator.planAndExecute(context, persistedSink);
+                AgentRunResult result = multiAgentOrchestrator.planAndExecute(context, recordingSink);
                 if (AgentRunStatus.WAITING_APPROVAL.name().equals(result.getStatus())) {
+                    streamingAnswer.discard();
                     return result;
                 }
                 cancellationService.assertNotCancelled(run.getId());
-                saveAssistantMessage(conversation.getId(), result.getAnswer());
+                streamingAnswer.finalize(result.getAnswer());
                 MemoryCaptureResult memoryCaptureResult = captureMemory(command, conversation.getId(), userMessage.getId(), result.getAnswer());
                 lifecycleService.completeRun(run.getId(), result);
-                emit(persistedSink, run.getId(), traceId, RuntimeEventType.RUN_FINISHED, "运行完成",
+                emit(recordingSink, run.getId(), traceId, RuntimeEventType.RUN_FINISHED, "运行完成",
                         "ExecutorAgent 已完成计划执行", usageMap(
                                 "status", AgentRunStatus.COMPLETED.name(),
                                 "inputTokens", result.getInputTokens(),
@@ -186,15 +197,16 @@ public class AgentRuntimeService {
             // 续接检测：消息表达"继续"且本会话有被中断的 plan，则从断点续接执行
             AgentPlanStateEntity interruptedPlan = findInterruptedPlan(command);
             if (interruptedPlan != null && isResumeIntent(command)) {
-                AgentRunResult result = multiAgentOrchestrator.resumePlanAndExecute(context, persistedSink, interruptedPlan);
+                AgentRunResult result = multiAgentOrchestrator.resumePlanAndExecute(context, recordingSink, interruptedPlan);
                 if (AgentRunStatus.WAITING_APPROVAL.name().equals(result.getStatus())) {
+                    streamingAnswer.discard();
                     return result;
                 }
                 cancellationService.assertNotCancelled(run.getId());
-                saveAssistantMessage(conversation.getId(), result.getAnswer());
+                streamingAnswer.finalize(result.getAnswer());
                 MemoryCaptureResult memoryCaptureResult = captureMemory(command, conversation.getId(), userMessage.getId(), result.getAnswer());
                 lifecycleService.completeRun(run.getId(), result);
-                emit(persistedSink, run.getId(), traceId, RuntimeEventType.RUN_FINISHED, "运行完成",
+                emit(recordingSink, run.getId(), traceId, RuntimeEventType.RUN_FINISHED, "运行完成",
                         "已从中断点续接完成计划执行", usageMap(
                                 "status", AgentRunStatus.COMPLETED.name(),
                                 "inputTokens", result.getInputTokens(),
@@ -214,15 +226,16 @@ public class AgentRuntimeService {
             }
 
             if (isAuto(command)) {
-                AgentRunResult result = multiAgentOrchestrator.routeAndExecute(context, persistedSink);
+                AgentRunResult result = multiAgentOrchestrator.routeAndExecute(context, recordingSink);
                 if (AgentRunStatus.WAITING_APPROVAL.name().equals(result.getStatus())) {
+                    streamingAnswer.discard();
                     return result;
                 }
                 cancellationService.assertNotCancelled(run.getId());
-                saveAssistantMessage(conversation.getId(), result.getAnswer());
+                streamingAnswer.finalize(result.getAnswer());
                 MemoryCaptureResult memoryCaptureResult = captureMemory(command, conversation.getId(), userMessage.getId(), result.getAnswer());
                 lifecycleService.completeRun(run.getId(), result);
-                emit(persistedSink, run.getId(), traceId, RuntimeEventType.RUN_FINISHED, "运行完成",
+                emit(recordingSink, run.getId(), traceId, RuntimeEventType.RUN_FINISHED, "运行完成",
                         "智能路由运行已完成", usageMap(
                                 "status", AgentRunStatus.COMPLETED.name(),
                                 "inputTokens", result.getInputTokens(),
@@ -241,15 +254,15 @@ public class AgentRuntimeService {
                 return result;
             }
 
-            AgentRunResult result = agentScopeRuntimeAdapter.execute(context, persistedSink);
+            AgentRunResult result = agentScopeRuntimeAdapter.execute(context, recordingSink);
             if (AgentRunStatus.WAITING_APPROVAL.name().equals(result.getStatus())) {
                 return result;
             }
             cancellationService.assertNotCancelled(run.getId());
-            saveAssistantMessage(conversation.getId(), result.getAnswer());
+            streamingAnswer.finalize(result.getAnswer());
             MemoryCaptureResult memoryCaptureResult = captureMemory(command, conversation.getId(), userMessage.getId(), result.getAnswer());
             lifecycleService.completeRun(run.getId(), result);
-            emit(persistedSink, run.getId(), traceId, RuntimeEventType.RUN_FINISHED, "运行完成",
+            emit(recordingSink, run.getId(), traceId, RuntimeEventType.RUN_FINISHED, "运行完成",
                     "智能体运行已完成", usageMap(
                             "status", AgentRunStatus.COMPLETED.name(),
                             "inputTokens", result.getInputTokens(),
@@ -266,10 +279,11 @@ public class AgentRuntimeService {
             result.setStatus("COMPLETED");
             return result;
         } catch (AgentRunCancelledException e) {
-            return cancelRunAndEmit(run, persistedSink, started, e.getMessage());
+            streamingAnswer.finalize(null);
+            return cancelRunAndEmit(run, recordingSink, started, e.getMessage());
         } catch (Exception e) {
             if (cancellationService.isCancelled(run.getId()) || hasCause(e, AgentRunCancelledException.class)) {
-                return cancelRunAndEmit(run, persistedSink, started, cancellationService.reason(run.getId()));
+                return cancelRunAndEmit(run, recordingSink, started, cancellationService.reason(run.getId()));
             }
             AgentRunStatus errorStatus = isTimeout(e) ? AgentRunStatus.TIMEOUT : AgentRunStatus.FAILED;
             if (errorStatus == AgentRunStatus.TIMEOUT) {
@@ -277,8 +291,9 @@ public class AgentRuntimeService {
             } else {
                 lifecycleService.failRun(run.getId(), e.getMessage());
             }
-            emit(persistedSink, run.getId(), traceId, RuntimeEventType.RUN_ERROR, "运行异常",
+            emit(recordingSink, run.getId(), traceId, RuntimeEventType.RUN_ERROR, "运行异常",
                     e.getMessage(), Map.of("status", errorStatus.name()), elapsedMs(started));
+            streamingAnswer.finalize(null);
             throw e;
         } finally {
             cancellationService.unbind(run.getId());
@@ -582,6 +597,104 @@ public class AgentRuntimeService {
         entity.setTokenCount(estimateTokens(message));
         entity.setMetadataJson("{}");
         return conversationMessageRepository.save(entity);
+    }
+
+    /**
+     * 创建流式回答的占位消息行：运行开始即存在，内容随流式输出节流更新。
+     */
+    private Long createStreamingAssistantMessage(Long conversationId) {
+        ConversationMessageEntity entity = new ConversationMessageEntity();
+        entity.setConversationId(conversationId);
+        entity.setRole("ASSISTANT");
+        entity.setContent("");
+        entity.setTokenCount(0);
+        entity.setMetadataJson("{}");
+        return conversationMessageRepository.save(entity).getId();
+    }
+
+    /**
+     * 判断事件是否属于多 Agent 某个节点（节点级增量不进主回答占位行）。
+     */
+    private boolean hasNodeScope(RuntimeEvent event) {
+        Map<String, Object> metadata = event.getMetadata();
+        if (metadata == null) {
+            return false;
+        }
+        return metadata.containsKey("taskNodeId") || metadata.containsKey("stepId");
+    }
+
+    /**
+     * 流式回答增量持久化器。
+     * 中文注释：append 节流落库（间隔≥2 秒或累计≥800 字符），finalize 写入最终回答；无任何内容时删除占位行。
+     */
+    private class StreamingAnswerPersister {
+
+        private final Long messageId;
+        private final StringBuilder buffer = new StringBuilder();
+        private long lastFlushAt = System.currentTimeMillis();
+        private boolean finalized;
+
+        StreamingAnswerPersister(Long messageId) {
+            this.messageId = messageId;
+        }
+
+        synchronized void append(String delta) {
+            if (finalized || delta == null || delta.isEmpty()) {
+                return;
+            }
+            buffer.append(delta);
+            long now = System.currentTimeMillis();
+            if (now - lastFlushAt >= 2000 || buffer.length() >= 800) {
+                flush();
+            }
+        }
+
+        /**
+         * 丢弃占位行：审批挂起等提前返回场景使用，避免与恢复路径另存的完整回答重复。
+         */
+        synchronized void discard() {
+            finalized = true;
+            try {
+                conversationMessageRepository.deleteById(messageId);
+            } catch (Exception ignored) {
+                // 删除失败不影响主流程
+            }
+        }
+
+        synchronized void finalize(String finalAnswer) {
+            if (finalized) {
+                return;
+            }
+            finalized = true;
+            String content = finalAnswer != null && !finalAnswer.isBlank()
+                    ? finalAnswer
+                    : buffer.toString();
+            if (content.isBlank()) {
+                conversationMessageRepository.deleteById(messageId);
+                return;
+            }
+            updateContent(content);
+        }
+
+        private void flush() {
+            if (buffer.isEmpty()) {
+                return;
+            }
+            lastFlushAt = System.currentTimeMillis();
+            updateContent(buffer.toString());
+        }
+
+        private void updateContent(String content) {
+            try {
+                conversationMessageRepository.findById(messageId).ifPresent(entity -> {
+                    entity.setContent(content);
+                    entity.setTokenCount(estimateTokens(content));
+                    conversationMessageRepository.save(entity);
+                });
+            } catch (Exception ignored) {
+                // 落库失败不打断流式主链路，等待 finalize 重试
+            }
+        }
     }
 
     private void saveAssistantMessage(Long conversationId, String answer) {

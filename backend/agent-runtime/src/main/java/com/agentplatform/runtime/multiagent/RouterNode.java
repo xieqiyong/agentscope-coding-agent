@@ -47,6 +47,18 @@ public class RouterNode implements AgentNode {
         emit(state, RuntimeEventType.AGENT_HANDOFF, "切换 Agent：Router",
                 "RouterAgent 开始判断任务应该走哪条流程", Map.of("node", nodeName()));
 
+        // 快路径：明显闲聊/短问题直接规则路由，省一次 Router 模型调用，控制简单问题的 token 消耗
+        AgentRouteDecision quick = quickRoute(state.getTask());
+        if (quick != null) {
+            emit(state, RuntimeEventType.ROUTE_SELECTED, "规则路由命中",
+                    quick.getReason(), Map.of(
+                            "node", nodeName(),
+                            "route", quick.effectiveRoute(),
+                            "quickPath", true
+                    ));
+            return quick;
+        }
+
         String rawDecision = "";
         try (ReActAgent agent = buildRouterAgent(state.getRuntimeContext())) {
             RouterTrace trace = new RouterTrace();
@@ -164,6 +176,28 @@ public class RouterNode implements AgentNode {
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    /**
+     * 规则快路径：任务很短且不含工作区/编码/计划类关键词时视为闲聊直答，跳过 Router 的模型调用。
+     * 命中条件保守，宁可多走一次 Router 也不误路由。
+     */
+    private AgentRouteDecision quickRoute(String task) {
+        String text = task == null ? "" : task.trim();
+        if (text.length() == 0 || text.length() > 24) {
+            return null;
+        }
+        if (containsAny(text.toLowerCase(), "项目", "代码", "文件", "接口", "报错", "修改", "修复", "实现",
+                "重构", "删除", "计划", "方案", "目录", "工作区", "测试", "看下", "检查", "为什么")) {
+            return null;
+        }
+        AgentRouteDecision decision = new AgentRouteDecision();
+        decision.setRoute(AgentRouteDecision.ROUTE_DIRECT_ANSWER);
+        decision.setIntent("GENERAL");
+        decision.setRiskLevel("LOW");
+        decision.setConfidence(0.9);
+        decision.setReason("短消息且无工作区/编码关键词，规则快路径直答（未调用 Router 模型）");
+        return decision;
     }
 
     private AgentRouteDecision fallbackDecision(String task) {
