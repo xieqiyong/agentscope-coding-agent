@@ -18,4 +18,7 @@ public interface AgentRepository extends JpaRepository<AgentEntity, Long> {
 
     /** 全局按状态查询智能体：智能体不再绑定工作区 */
     List<AgentEntity> findByStatusOrderByCreatedAtDesc(String status);
+
+    /** 按名称查找，用于创建时防重名 */
+    java.util.Optional<AgentEntity> findByName(String name);
 }

@@ -43,6 +43,10 @@ public class AgentDefinitionService {
         if (!StringUtils.hasText(name)) {
             throw new BusinessException(400, "智能体名称不能为空");
         }
+        // 同名防重：全局唯一，避免多套配置堆积
+        agentRepository.findByName(name.trim()).ifPresent(existing -> {
+            throw new BusinessException(409, "同名智能体已存在：" + existing.getName());
+        });
 
         AgentEntity entity = new AgentEntity();
         entity.setName(name.trim());
